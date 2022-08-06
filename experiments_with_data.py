@@ -8,13 +8,6 @@ from scipy.sparse import csc_array
 from scipy.sparse.linalg import splu
 
 
-def read_json(filename: str):
-    file = open(f"data/{filename}.json", "r")
-    data = json.load(file)
-    file.close()
-    return data
-
-
 def wave_impedance_te(kcte, f0):
     mi0 = 4 * pi * 1e-7
     k0 = (2 * pi * f0) / c
@@ -25,7 +18,7 @@ def wave_impedance_te(kcte, f0):
 
 
 if __name__ == "__main__":
-    frequency_points = np.linspace(3e9, 5e9, 1001)
+    frequency_points = np.linspace(3e9, 5e9, 101)
     gate_count = 2
 
     ct = csc_array(np.load("data/Ct.npy"))
@@ -36,8 +29,6 @@ if __name__ == "__main__":
 
     s11 = np.zeros([gate_count, frequency_points.size], dtype=complex)
     s21 = np.zeros([gate_count, frequency_points.size], dtype=complex)
-    no_s11f = np.zeros([gate_count, frequency_points.size], dtype=complex)
-    no_s21f = np.zeros([gate_count, frequency_points.size], dtype=complex)
 
     start = time.time()
     for i in range(frequency_points.size):
@@ -62,8 +53,6 @@ if __name__ == "__main__":
         s = 2 * np.linalg.inv(id + y2) - id
         s11[:, i] = s[0, 0]
         s21[:, i] = s[1, 0]
-        no_s11f[:, i] = s[0, 0]
-        no_s21f[:, i] = s[1, 0]
 
         if i % 100 == 0:
             print(i)
@@ -75,5 +64,9 @@ if __name__ == "__main__":
 
     plt.plot(frequency_points, 20 * np.log10(np.abs(s11)))
     plt.plot(frequency_points, 20 * np.log10(np.abs(s21)))
+    plt.legend(["S11", "S21"])
+    plt.title("Dispersion characteristics")
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("|S11|, |S24| [dB]")
     plt.show()
     print("Done")
