@@ -1,29 +1,26 @@
-import math
-import json
 import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.constants import pi, c, epsilon_0
 from scipy.sparse import csc_array
-from scipy.sparse.linalg import splu
+from implementation import solve_finite_element_method_with_model_order_reduction
 
 
-def wave_impedance_te(kcte, f0):
-    mi0 = 4 * pi * 1e-7
-    k0 = (2 * pi * f0) / c
-    gte = 1 / math.sqrt(k0 ** 2 - kcte ** 2)
-    if gte.imag != 0:  # kcte and f0 handled only as scalars, no vector values support
-        gte = 1j * math.fabs(gte)
-    return 2 * pi * f0 * mi0 * gte
+def generalized_scattering_matrix(frequency_point: float, e_mat: csc_array, b_mat_local: csc_array):
+    gim = 1j * 2 * pi * frequency_point * epsilon_0 * e_mat.T @ b_mat_local  # 3.28
+    gam = np.linalg.inv(gim)
+    id = np.eye(gam.shape[0])
+    gsm = 2 * np.linalg.inv(id + gam) - id
+    return gsm
 
 
 if __name__ == "__main__":
     frequency_points = np.linspace(3e9, 5e9, 101)
     gate_count = 2
 
-    ct = csc_array(np.load("data/Ct.npy"))
-    tt = csc_array(np.load("data/Tt.npy"))
-    wp = csc_array(np.load("data/WP.npy"))
+    c_mat = csc_array(np.load("data/Ct.npy"))
+    gamma_mat = csc_array(np.load("data/Tt.npy"))
+    b_mat = csc_array(np.load("data/WP.npy"))
     kte1 = np.load("data/kTE1.npy")
     kte2 = np.load("data/kTE2.npy")
 
@@ -31,28 +28,15 @@ if __name__ == "__main__":
     s21 = np.zeros([gate_count, frequency_points.size], dtype=complex)
 
     start = time.time()
+
+    b_mat_in_frequency, e_mat_in_frequency = solve_finite_element_method_with_model_order_reduction(
+        frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2
+    )
+
     for i in range(frequency_points.size):
-        k0 = (2 * pi * frequency_points[i]) / c
-
-        zte1 = wave_impedance_te(kte1, frequency_points[i])
-        zte2 = wave_impedance_te(kte2, frequency_points[i])
-
-        g = ct - k0 ** 2 * tt
-
-        di = np.diag(np.sqrt([1/zte1, 1/zte2]))
-        wp_local = wp @ di
-        g = (g + g.T) / 2
-        x = splu(g).solve(wp_local)  # LU factorization
-
-        # GAM
-        z2 = 1j * 2 * pi * frequency_points[i] * epsilon_0 * x.T @ wp_local
-        y2 = np.linalg.inv(z2)
-        id = np.eye(y2.shape[0])
-
-        # GSM
-        s = 2 * np.linalg.inv(id + y2) - id
-        s11[:, i] = s[0, 0]
-        s21[:, i] = s[1, 0]
+        gsm = generalized_scattering_matrix(frequency_points[i], e_mat_in_frequency[i], b_mat_in_frequency[i])
+        s11[:, i] = gsm[0, 0]
+        s21[:, i] = gsm[1, 0]
 
         if i % 100 == 0:
             print(i)
@@ -67,6 +51,8 @@ if __name__ == "__main__":
     plt.legend(["S11", "S21"])
     plt.title("Dispersion characteristics")
     plt.xlabel("Frequency [Hz]")
-    plt.ylabel("|S11|, |S24| [dB]")
+    plt.ylabel("|S11|, |S21| [dB]")
     plt.show()
     print("Done")
+
+# w1 A + w2 * A2 + w3  A3 = w4 * B <- odwrócony interfejs
