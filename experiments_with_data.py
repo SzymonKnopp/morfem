@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.constants import pi, c, epsilon_0
+from scipy.constants import pi, epsilon_0
 from scipy.sparse import csc_array
 from implementation import solve_finite_element_method_with_model_order_reduction
 
@@ -14,9 +14,19 @@ def generalized_scattering_matrix(frequency_point: float, e_mat: csc_array, b_ma
     return gsm
 
 
+def every_nth_value(array, n: int):
+    result = []
+    anchor = 0
+    while anchor < len(array):
+        result.append(array[anchor])
+        anchor += n
+    return result
+
+
 if __name__ == "__main__":
     frequency_points = np.linspace(3e9, 5e9, 101)
     gate_count = 2
+    reduction_points_distance = 5
 
     c_mat = csc_array(np.load("data/Ct.npy"))
     gamma_mat = csc_array(np.load("data/Tt.npy"))
@@ -30,7 +40,8 @@ if __name__ == "__main__":
     start = time.time()
 
     b_mat_in_frequency, e_mat_in_frequency = solve_finite_element_method_with_model_order_reduction(
-        frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2
+        frequency_points, every_nth_value(frequency_points, reduction_points_distance),
+        gate_count, c_mat, gamma_mat, b_mat, kte1, kte2
     )
 
     for i in range(frequency_points.size):
