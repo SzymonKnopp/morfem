@@ -1,26 +1,8 @@
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.constants import pi, epsilon_0
 from scipy.sparse import csc_array
-from implementation import solve_finite_element_method_with_model_order_reduction
-
-
-def generalized_scattering_matrix(frequency_point: float, e_mat: csc_array, b_mat_local: csc_array):
-    gim = 1j * 2 * pi * frequency_point * epsilon_0 * e_mat.T @ b_mat_local  # 3.28
-    gam = np.linalg.inv(gim)
-    id = np.eye(gam.shape[0])
-    gsm = 2 * np.linalg.inv(id + gam) - id
-    return gsm
-
-
-def every_nth_value(array, n: int):
-    result = []
-    anchor = 0
-    while anchor < len(array):
-        result.append(array[anchor])
-        anchor += n
-    return result
+from test_helpers import finite_element_method_model_order_reduction_gsm, every_nth_value
 
 
 if __name__ == "__main__":
@@ -34,31 +16,15 @@ if __name__ == "__main__":
     kte1 = np.load("data/kTE1.npy")
     kte2 = np.load("data/kTE2.npy")
 
-    s11 = np.zeros([gate_count, frequency_points.size], dtype=complex)
-    s21 = np.zeros([gate_count, frequency_points.size], dtype=complex)
-
     start = time.time()
 
-    b_mat_in_frequency, e_mat_in_frequency = solve_finite_element_method_with_model_order_reduction(
-        frequency_points, every_nth_value(frequency_points, reduction_points_distance),
-        gate_count, c_mat, gamma_mat, b_mat, kte1, kte2
-    )
-
-    for i in range(frequency_points.size):
-        gsm = generalized_scattering_matrix(frequency_points[i], e_mat_in_frequency[i], b_mat_in_frequency[i])
-        s11[:, i] = gsm[0, 0]
-        s21[:, i] = gsm[1, 0]
-
-        if i % 100 == 0:
-            print(i)
+    reduction_points = every_nth_value(frequency_points, reduction_points_distance)
+    gsm_of_frequency = finite_element_method_model_order_reduction_gsm(frequency_points, reduction_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
 
     print(f"Time elapsed: {time.time() - start} s")
 
-    s11 = s11[0]
-    s21 = s21[0]
-
-    plt.plot(frequency_points, 20 * np.log10(np.abs(s11)))
-    plt.plot(frequency_points, 20 * np.log10(np.abs(s21)))
+    plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_of_frequency[0, 0, :])))
+    plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_of_frequency[1, 0, :])))
     plt.legend(["S11", "S21"])
     plt.title("Dispersion characteristics")
     plt.xlabel("Frequency [Hz]")
