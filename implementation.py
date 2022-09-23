@@ -42,7 +42,7 @@ def e_in_frequency_point(frequency_point: float, c_mat: csc_array, gamma_mat: cs
     return e_mat
 
 
-def projection_base(frequency_points: np.ndarray, reduction_points: List[float], c_mat: csc_array, gamma_mat: csc_array, b_mat: csc_array, kte1: float, kte2: float, gate_count: int):
+def projection_base(frequency_points: np.ndarray, reduction_points: List[float], c_mat: csc_array, gamma_mat: csc_array, b_mat: csc_array, kte1: float, kte2: float, gate_count: int, plot_residual = False):
     q_mat = np.empty((c_mat.shape[0], gate_count * len(reduction_points)))
 
     for i in range(len(reduction_points)):
@@ -60,11 +60,12 @@ def projection_base(frequency_points: np.ndarray, reduction_points: List[float],
         residual = a_mat @ q_mat @ e_in_frequency_point(frequency_points[i], c_r_mat, gamma_r_mat, b_r_mat) - b_mat
         residual_in_frequency[i] = norm(residual)
 
-    plt.plot(frequency_points, residual_in_frequency)
-    plt.title("Residual in frequency")
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel("Residual")
-    plt.show()
+    if plot_residual:
+        plt.plot(frequency_points, residual_in_frequency)
+        plt.title("Residual in frequency")
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel("Residual")
+        plt.show()
 
     return q_mat
 

@@ -12,13 +12,12 @@ def generalized_scattering_matrix(frequency_point: float, e_mat: csc_array, b_ma
     return gsm
 
 
-def every_nth_value(array, n: int):
-    result = []
-    anchor = 0
-    while anchor < len(array):
-        result.append(array[anchor])
-        anchor += n
-    return result
+def equally_distributed_points(source: np.ndarray, amount: int):
+    if amount > source.size:
+        raise Exception("amount can't be greater than the number of points in the source")
+
+    indices = np.linspace(0, source.size - 1, amount, dtype=int)
+    return source[indices]
 
 
 def finite_element_method_gsm(frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2):

@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.linalg import norm
 from scipy.sparse import csc_array
-from test_helpers import finite_element_method_model_order_reduction_gsm, every_nth_value, finite_element_method_gsm
+from test_helpers import finite_element_method_model_order_reduction_gsm, finite_element_method_gsm, equally_distributed_points
 
 
 if __name__ == "__main__":
@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     ref_gsm = finite_element_method_gsm(frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
 
-    reduction_points = every_nth_value(frequency_points, 20)
+    reduction_points = equally_distributed_points(frequency_points, 7)
     # reduction_points = [frequency_points[0], frequency_points[frequency_points.size // 2], frequency_points[-1]]
     gsm_of_frequency = finite_element_method_model_order_reduction_gsm(frequency_points, reduction_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
 
