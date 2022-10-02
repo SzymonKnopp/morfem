@@ -29,7 +29,7 @@ def impulse_vector(frequency_point: float, b_mat: csc_array, kte1: float, kte2: 
 def system_matrix(frequency_point: float, c_mat: csc_array, gamma_mat: csc_array):
     k0 = (2 * pi * frequency_point) / c
     a_mat = c_mat - k0 ** 2 * gamma_mat
-    return (a_mat + a_mat.T) / 2  # check if symmetrization needed after ROM
+    return (a_mat + a_mat.T) / 2  # TODO: check if symmetrization needed after ROM
 
 
 def e_in_frequency_point(frequency_point: float, c_mat: csc_array, gamma_mat: csc_array, b_mat: csc_array):
@@ -42,26 +42,28 @@ def e_in_frequency_point(frequency_point: float, c_mat: csc_array, gamma_mat: cs
     return e_mat
 
 
-def projection_base(frequency_points: np.ndarray, reduction_points: List[float], c_mat: csc_array, gamma_mat: csc_array, b_mat: csc_array, kte1: float, kte2: float, gate_count: int, plot_residual = False):
+def projection_base(frequency_points: np.ndarray, reduction_points: List[float], c_mat: csc_array, gamma_mat: csc_array, b_mat: csc_array, kte1: float, kte2: float, gate_count: int, plot_residual=True):
     q_mat = np.empty((c_mat.shape[0], gate_count * len(reduction_points)))
 
     for i in range(len(reduction_points)):
         b_mat_local = impulse_vector(reduction_points[i], b_mat, kte1, kte2)
         q_mat[:, 2*i:2*i+2] = e_in_frequency_point(reduction_points[i], c_mat, gamma_mat, b_mat_local)
 
-    c_r_mat = q_mat.T @ c_mat @ q_mat  # calculate q_mat.T once and reuse?
+    q_mat = np.linalg.svd(q_mat, full_matrices=False)[0]  # orthonormalize base Q
+
+    c_r_mat = q_mat.T @ c_mat @ q_mat  # TODO: calculate q_mat.T once and reuse?
     gamma_r_mat = q_mat.T @ gamma_mat @ q_mat
     b_r_mat = q_mat.T @ b_mat
 
     residual_in_frequency = np.empty(frequency_points.size)
     for i in range(frequency_points.size):
         a_mat = system_matrix(frequency_points[i], c_mat, gamma_mat)
-        b_mat = impulse_vector(frequency_points[i], b_mat, kte1, kte2)
-        residual = a_mat @ q_mat @ e_in_frequency_point(frequency_points[i], c_r_mat, gamma_r_mat, b_r_mat) - b_mat
+        b_local_mat = impulse_vector(frequency_points[i], b_mat, kte1, kte2)
+        residual = a_mat @ q_mat @ e_in_frequency_point(frequency_points[i], c_r_mat, gamma_r_mat, impulse_vector(frequency_points[i], b_r_mat, kte1, kte2)) - b_local_mat
         residual_in_frequency[i] = norm(residual)
 
     if plot_residual:
-        plt.plot(frequency_points, residual_in_frequency)
+        plt.semilogy(frequency_points, residual_in_frequency)
         plt.title("Residual in frequency")
         plt.xlabel("Frequency [Hz]")
         plt.ylabel("Residual")
@@ -73,7 +75,7 @@ def projection_base(frequency_points: np.ndarray, reduction_points: List[float],
 def solve_finite_element_method_with_model_order_reduction(frequency_points: np.ndarray, reduction_points: List[float], gate_count: int, c_mat: csc_array, gamma_mat: csc_array, b_mat: csc_array, kte1: float, kte2: float):
     q_mat = projection_base(frequency_points, reduction_points, c_mat, gamma_mat, b_mat, kte1, kte2, gate_count)
     # reduce model order - 5.5
-    c_r_mat = q_mat.T @ c_mat @ q_mat  # calculate q_mat.T once and reuse?
+    c_r_mat = q_mat.T @ c_mat @ q_mat  # TODO: calculate q_mat.T once and reuse?
     gamma_r_mat = q_mat.T @ gamma_mat @ q_mat
     b_r_mat = q_mat.T @ b_mat
 
@@ -83,7 +85,7 @@ def solve_finite_element_method_with_model_order_reduction(frequency_points: np.
 
 
 def solve_finite_element_method(frequency_points: np.ndarray, gate_count: int, c_mat: csc_array, gamma_mat: csc_array, b_mat: csc_array, kte1: float, kte2: float):
-    b_mat_in_frequency: List[csc_array] = []  # memory pre-allocation?
+    b_mat_in_frequency: List[csc_array] = []  # TODO: memory pre-allocation?
     e_mat_in_frequency: List[csc_array] = []
     for i in range(frequency_points.size):
         b_mat_local = impulse_vector(frequency_points[i], b_mat, kte1, kte2)
