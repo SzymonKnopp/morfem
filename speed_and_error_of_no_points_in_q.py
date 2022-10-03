@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
         start = time.time()
 
-        reduction_points = equally_distributed_points(frequency_points, reduction_points_amount)
+        reduction_points = equally_distributed_points(frequency_points, reduction_points_amount)  # TODO: change that to reduction_rate
         gsm_of_frequency = finite_element_method_model_order_reduction_gsm(frequency_points, reduction_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
 
         error = np.zeros(frequency_points.size)

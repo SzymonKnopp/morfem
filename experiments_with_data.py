@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.linalg import norm
 from scipy.sparse import csc_array
-from test_helpers import finite_element_method_model_order_reduction_gsm, finite_element_method_gsm, equally_distributed_points
+from test_helpers import finite_element_method_model_order_reduction_gsm, finite_element_method_gsm
 
 
 if __name__ == "__main__":
@@ -15,24 +15,23 @@ if __name__ == "__main__":
     kte1 = np.load("data/kTE1.npy")
     kte2 = np.load("data/kTE2.npy")
 
-    ref_gsm = finite_element_method_gsm(frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
+    gsm_ref_in_frequency = finite_element_method_gsm(frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
 
-    reduction_points = equally_distributed_points(frequency_points, 7)
-    gsm_of_frequency = finite_element_method_model_order_reduction_gsm(frequency_points, reduction_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
+    gsm_in_frequency = finite_element_method_model_order_reduction_gsm(frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
 
-    error = np.zeros(frequency_points.size)
+    error_in_frequency = np.zeros(frequency_points.size)
     for i in range(frequency_points.size):
-        error[i] = norm(gsm_of_frequency[:, :, i] - ref_gsm[:, :, i])
+        error_in_frequency[i] = norm(gsm_in_frequency[i] - gsm_ref_in_frequency[i])
 
-    plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_of_frequency[0, 0, :])))
-    plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_of_frequency[1, 0, :])))
+    plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_in_frequency[:, 0, 0])))
+    plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_in_frequency[:, 1, 0])))
     plt.legend(["S11", "S21"])
     plt.title("Dispersion characteristics on reduced model")
     plt.xlabel("Frequency [Hz]")
     plt.ylabel("|S11|, |S21| [dB]")
     plt.show()
 
-    plt.semilogy(frequency_points, error)
+    plt.semilogy(frequency_points, error_in_frequency)
     plt.title("Norm of difference between ref GSM and reduced model GSM")
     plt.xlabel("Frequency [Hz]")
     plt.ylabel("Error [dB]")
