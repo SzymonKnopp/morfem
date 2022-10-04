@@ -8,6 +8,8 @@ from scipy.sparse.linalg import splu
 from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt
 
+ERROR_THRESHOLD = 1e-6
+
 
 def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_domain: np.ndarray):
     x_in_domain = np.zeros(b_in_domain.shape)
@@ -18,7 +20,7 @@ def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_
     return x_in_domain
 
 
-def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, reduction_rate=0.97):
+def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, reduction_rate=0.93):
     q = projection_base(a_in_domain, b_in_domain, reduction_rate, domain, in_c, in_gamma, in_b)
 
     # reduce model order - 5.5
@@ -33,7 +35,7 @@ def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc
     return x_in_domain, b_reduced_in_domain
 
 
-def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduction_rate, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, plot_errors=True):
+def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduction_rate, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array):
     if reduction_rate < 0 or reduction_rate >= 1:
         raise Exception("reduction rate must be in range <0, 1)")
 
@@ -53,6 +55,48 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduc
 
     q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q
 
+    error_estimator(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain)
+
+    return q
+
+
+def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduction_rate, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array):
+    q = np.hstack((  # starting points in projection base
+        solve_linear(a_in_domain[0], b_in_domain[0]),
+        solve_linear(a_in_domain[-1], b_in_domain[-1])
+    ))
+    error_in_iteration = np.empty((0, b_in_domain.shape[0]))
+    while True:
+        q_new, error = new_solution_for_projection_base(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain)
+        error_in_iteration = np.vstack((error_in_iteration, error))
+        if q_new is None:
+            break
+        q = np.hstack((q, q_new))
+        q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q
+
+    plt.title("Error in iterations")
+    plt.xlabel("Domain")
+    plt.ylabel("Error")
+    for i in range(error_in_iteration.shape[0]):
+        plt.semilogy(domain, error_in_iteration[i], label=f"iter {i}")
+    plt.legend()
+    plt.show()
+
+    return q
+
+
+def new_solution_for_projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray):
+    # error = residual_norm(a_in_domain, b_in_domain, q, domain)
+    error = error_estimator(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain)
+    idx_max = error.argmax()
+
+    if error[idx_max] < ERROR_THRESHOLD:
+        return None, error
+
+    return solve_linear(a_in_domain[idx_max], b_in_domain[idx_max]), error
+
+
+def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, domain: np.ndarray):
     residual_norm_in_domain = np.empty(b_in_domain.shape[0])
     for i in range(b_in_domain.shape[0]):
         a_reduced = q.T @ a_in_domain[i] @ q  # TODO: calculate q.T once and reuse?
@@ -60,22 +104,7 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduc
         residual = a_in_domain[i] @ q @ solve_linear(a_reduced, b_reduced) - b_in_domain[i]
         residual_norm_in_domain[i] = norm(residual)
 
-    err_est_in_domain = error_estimator(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain)
-
-    if plot_errors:
-        plt.semilogy(domain, residual_norm_in_domain)
-        plt.title("Residual norm in domain")
-        plt.xlabel("Domain")
-        plt.ylabel("Residual")
-        plt.show()
-
-        plt.semilogy(domain, err_est_in_domain)
-        plt.title("Error estimator in domain")
-        plt.xlabel("Domain")
-        plt.ylabel("Error estimator")
-        plt.show()
-
-    return q
+    return residual_norm_in_domain
 
 
 def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray):
@@ -98,8 +127,6 @@ def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np
         b_reduced = q.T @ b_in_domain[i]
         x = solve_linear(a_reduced, b_reduced)
 
-        what_works = norm((h(x) @ h(q) @ h(in_c) - k(domain[i]) ** 2 * h(x) @ h(q) @ h(in_gamma) - factor_for_b(domain[i]) * h(in_b)) @ (in_c @ q @ x - k(domain[i]) ** 2 * in_gamma @ q @ x - factor_for_b(domain[i]) * in_b))
-
         err_est_in_domain[i] = norm(
             h(x) @ qh_ch_c_q @ x - k(domain[i]) ** 2 * h(x) @ qh_ch_g_q @ x -
             factor_for_b(domain[i]) * h(x) @ qh_ch_b - k(domain[i]) ** 2 * h(x) @ qh_gh_c_q @ x +
@@ -107,6 +134,12 @@ def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np
             factor_for_b(domain[i]) * bh_c_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * bh_g_q @ x +
             factor_for_b(domain[i]) ** 2 * bh_b
         )
+
+    plt.semilogy(domain, err_est_in_domain)
+    plt.title("Error estimator in domain")
+    plt.xlabel("Domain")
+    plt.ylabel("Error estimator")
+    plt.show()
 
     return err_est_in_domain
 
