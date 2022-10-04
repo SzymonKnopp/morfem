@@ -9,15 +9,15 @@ if __name__ == "__main__":
     frequency_points = np.linspace(3e9, 5e9, 101)
     gate_count = 2
 
-    c_mat = csc_array(np.load("data/Ct.npy"))
-    gamma_mat = csc_array(np.load("data/Tt.npy"))
-    b_mat = csc_array(np.load("data/WP.npy"))
-    kte1 = np.load("data/kTE1.npy")
-    kte2 = np.load("data/kTE2.npy")
+    in_c = csc_array(np.load("data/Ct.npy"))
+    in_gamma = csc_array(np.load("data/Tt.npy"))
+    in_b = csc_array(np.load("data/WP.npy"))
+    in_kte1 = np.load("data/kTE1.npy")
+    in_kte2 = np.load("data/kTE2.npy")
 
-    gsm_ref_in_frequency = finite_element_method_gsm(frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
+    gsm_ref_in_frequency = finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b, in_kte1, in_kte2)
 
-    gsm_in_frequency = finite_element_method_model_order_reduction_gsm(frequency_points, gate_count, c_mat, gamma_mat, b_mat, kte1, kte2)
+    gsm_in_frequency = finite_element_method_model_order_reduction_gsm(frequency_points, gate_count, in_c, in_gamma, in_b, in_kte1, in_kte2)
 
     error_in_frequency = np.zeros(frequency_points.size)
     for i in range(frequency_points.size):
