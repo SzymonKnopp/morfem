@@ -1,3 +1,4 @@
+import time
 import math
 import numpy as np
 from scipy.constants import pi, epsilon_0, c as c_lightspeed
@@ -53,7 +54,9 @@ def finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b
         a_in_domain[i] = system_matrix(frequency_points[i], in_c, in_gamma)
         b_in_domain[i] = impulse_vector(frequency_points[i], in_b, in_kte1, in_kte2)
 
+    start = time.time()
     x_in_domain = solve_finite_element_method(a_in_domain, b_in_domain)
+    print("No MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
         gsm_in_frequency[i] = generalized_scattering_matrix(frequency_points[i], x_in_domain[i], b_in_domain[i])
@@ -70,7 +73,9 @@ def finite_element_method_model_order_reduction_gsm(frequency_points, gate_count
         a_in_domain[i] = system_matrix(frequency_points[i], in_c, in_gamma)
         b_in_domain[i] = impulse_vector(frequency_points[i], in_b, in_kte1, in_kte2)
 
-    x_in_domain, b_reduced_in_domain = solve_finite_element_method_with_model_order_reduction(a_in_domain, b_in_domain, frequency_points, in_c, in_gamma, in_b)
+    start = time.time()
+    x_in_domain, b_reduced_in_domain = solve_finite_element_method_with_model_order_reduction(a_in_domain, b_in_domain, frequency_points, in_c, in_gamma, in_b, in_kte1, in_kte2)
+    print("MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
         gsm_in_frequency[i] = generalized_scattering_matrix(frequency_points[i], x_in_domain[i], b_reduced_in_domain[i])
