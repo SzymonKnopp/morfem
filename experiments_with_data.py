@@ -4,7 +4,6 @@ from numpy.linalg import norm
 from scipy.sparse import csc_array
 from test_helpers import finite_element_method_model_order_reduction_gsm, finite_element_method_gsm
 
-
 if __name__ == "__main__":
     frequency_points = np.linspace(3e9, 5e9, 101)
     gate_count = 2
@@ -32,11 +31,16 @@ if __name__ == "__main__":
     plt.show()
 
     plt.semilogy(frequency_points, error_in_frequency)
-    plt.title("Norm of difference between ref GSM and reduced model GSM")
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel("Error [dB]")
+    # plt.title("Norm of difference between ref GSM and reduced model GSM")
+    # plt.xlabel("Frequency [Hz]")
+    # plt.ylabel("Error [dB]")
+    plt.title("Różnica między charakterystyką uzyskaną z\npełnowymiarowego i zredukowanego modelu")
+    plt.xlabel("Częstotliwość [Hz]")
+    plt.ylabel("Błąd [dB]")
     plt.show()
+
+    print(error_in_frequency.mean())
 
     print("Done")
 
-# w1 A + w2 * A2 + w3  A3 = w4 * B <- odwrócony interfejs
+# (w1 * A1 + w2 * A2 + w3 * A3)x = w4 * B <- odwrócony interfejs
