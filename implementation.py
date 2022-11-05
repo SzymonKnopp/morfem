@@ -9,8 +9,10 @@ from scipy.sparse.linalg import splu
 from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt
 
-ERROR_THRESHOLD = 1e-4
-
+ERROR_THRESHOLD = 1e-6
+USE_EQUALLY_DISTRIBUTED = False
+EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.95  # in range <0, 1)
+PLOT_RESULTS = False
 
 def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_domain: np.ndarray):
     x_in_domain = np.zeros(b_in_domain.shape)
@@ -21,9 +23,9 @@ def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_
     return x_in_domain
 
 
-def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2, reduction_rate=0.993):
+def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
     start = time.time()
-    q = projection_base(a_in_domain, b_in_domain, reduction_rate, domain, in_c, in_gamma, in_b, kte1, kte2)
+    q = projection_base(a_in_domain, b_in_domain, domain, in_c, in_gamma, in_b, kte1, kte2) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(a_in_domain, b_in_domain)
     print("Projection base: ", time.time() - start, " s")
 
     # reduce model order - 5.5
@@ -34,23 +36,20 @@ def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc
     for i in range(b_in_domain.shape[0]):
         a_reduced_in_domain[i] = q.T @ a_in_domain[i] @ q  # TODO: calculate q_mat.T once and reuse?
         b_reduced_in_domain[i] = q.T @ b_in_domain[i]
-    print("A and B pre-calculation: ", time.time() - start, " s")
+    #print("A and B pre-calculation: ", time.time() - start, " s")
 
     start = time.time()
     x_in_domain = solve_finite_element_method(a_reduced_in_domain, b_reduced_in_domain)
-    print("FEM: ", time.time() - start, " s")
+    #print("FEM: ", time.time() - start, " s")
 
     return x_in_domain, b_reduced_in_domain
 
 
-def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduction_rate, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array):
-    if reduction_rate < 0 or reduction_rate >= 1:
-        raise Exception("reduction rate must be in range <0, 1)")
-
+def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domain: np.ndarray):
     reduction_indices = np.linspace(  # indices of points to be added to projection base Q
         0,
         b_in_domain.shape[0] - 1,
-        math.floor(b_in_domain.shape[0] * (1 - reduction_rate)),
+        math.floor(b_in_domain.shape[0] * (1 - EQUALLY_DISTRIBUTED_REDUCTION_RATE)),
         dtype=int
     )
     vector_count = b_in_domain.shape[2]  # how many vectors does a single Ax = b solution contain
@@ -68,8 +67,11 @@ def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domai
     return q
 
 
-def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduction_rate, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
-    start = time.time()
+def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+    time_stats = TimeStatistics()
+    time_stats.start_clock()
+    whole_time_clock = time_stats.clock
+
     q = np.hstack((  # starting points in projection base
         solve_linear(a_in_domain[0], b_in_domain[0]),
         solve_linear(a_in_domain[-1], b_in_domain[-1])
@@ -95,16 +97,15 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduc
     opm.bh_g_q = bh_g @ q
     opm.bh_b = h(in_b) @ in_b
 
-    print("Before offline: ", time.time() - start, " s")
-
     error_in_iteration = np.empty((0, b_in_domain.shape[0]))
+
+    time_stats.add_time("Before offline")
     while True:
-        q_new, error = new_solution_for_projection_base(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm)
+        q_new, error = new_solution_for_projection_base(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
         error_in_iteration = np.vstack((error_in_iteration, error))
         if q_new is None:
             break
 
-        start = time.time()
         # expand offline phase matrices
         opm.qh_ch_c_q = expand_matrix(opm.qh_ch_c_q, q, ch_c, q_new)
         opm.qh_ch_g_q = expand_matrix(opm.qh_ch_g_q, q, ch_g, q_new)
@@ -116,24 +117,27 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, reduc
         opm.bh_g_q = np.hstack((opm.bh_g_q, bh_g @ q_new))
 
         q = np.hstack((q, q_new))
-        print("Offline: ", time.time() - start, " s")
+        time_stats.add_time("Offline")
 
-    q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q
+    q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q TODO: orthonormalize in offline phase - only new vectors
 
-    plt.title("Estymator błędu w iteracjach")
-    plt.xlabel("Dziedzina")
-    plt.ylabel("Błąd")
-    for i in range(error_in_iteration.shape[0]):
-        plt.semilogy(domain, error_in_iteration[i], label=f"iter {i}")
-    plt.legend()
-    plt.show()
+    time_stats.add_custom_time("Whole", whole_time_clock)
+    time_stats.print_statistics()
+
+    if PLOT_RESULTS:
+        plt.title("Estymator błędu w iteracjach") # that takes a long while!
+        plt.xlabel("Dziedzina")
+        plt.ylabel("Błąd")
+        for i in range(error_in_iteration.shape[0]):
+            plt.semilogy(domain, error_in_iteration[i], label=f"iter {i}")
+        plt.legend()
+        plt.show()
 
     return q
 
 
-def new_solution_for_projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm):
-    # error = residual_norm(a_in_domain, b_in_domain, q, domain)
-    error = error_estimator(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm)
+def new_solution_for_projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
+    error = error_estimator(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
     idx_max = error.argmax()
 
     if error[idx_max] < ERROR_THRESHOLD:
@@ -153,27 +157,23 @@ def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.n
     return residual_norm_in_domain
 
 
-def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm):
+def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
     err_est_in_domain = np.empty(b_in_domain.shape[0])
 
-    start = time.time()
     in_c_reduced = q.T @ in_c @ q  # TODO: calculate q.T once and reuse?
     in_gamma_reduced = q.T @ in_gamma @ q
     in_b_reduced = q.T @ in_b
-    print("Reduce C, Gamma, B: ", time.time() - start, " s")
 
-    solve_time = 0
-    add_time = 0
+    time_stats.add_time("Offline")
 
     # online phase - sweep through domain
     for i in range(domain.size):
-        start = time.time()
         a = system_matrix(domain[i], in_c_reduced, in_gamma_reduced)
         b = impulse_vector(domain[i], in_b_reduced, kte1, kte2)
         x = solve_linear(a, b)
-        solve_time += time.time() - start
 
-        start = time.time()
+        time_stats.add_time("Online - solve")
+
         err_est_in_domain[i] = norm(
             h(x) @ opm.qh_ch_c_q @ x - k(domain[i]) ** 2 * h(x) @ opm.qh_ch_g_q @ x -
             factor_for_b(domain[i]) * h(x) @ opm.qh_ch_b - k(domain[i]) ** 2 * h(x) @ opm.qh_gh_c_q @ x +
@@ -181,53 +181,15 @@ def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np
             factor_for_b(domain[i]) * opm.bh_c_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * opm.bh_g_q @ x +
             factor_for_b(domain[i]) ** 2 * opm.bh_b
         )
-        add_time += time.time() - start
 
-    print("Online - solve: ", solve_time, " s")
-    print("Online - add: ", add_time, " s")
+        time_stats.add_time("Online - add")
 
-    # plt.semilogy(domain, err_est_in_domain)
-    # plt.title("Error estimator in domain")
-    # plt.xlabel("Domain")
-    # plt.ylabel("Error estimator")
-    # plt.show()
-
-    return err_est_in_domain
-
-
-def error_estimator_manual_offline_calculation(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, opm):
-    err_est_in_domain = np.empty(b_in_domain.shape[0])
-
-    # offline phase - calculate factors not determined by domain TODO: calculate and reuse things like qh_ch
-    qh_ch_c_q = h(q) @ h(in_c) @ in_c @ q
-    qh_ch_g_q = h(q) @ h(in_c) @ in_gamma @ q
-    qh_ch_b = h(q) @ h(in_c) @ in_b
-    qh_gh_c_q = h(q) @ h(in_gamma) @ in_c @ q
-    qh_gh_g_q = h(q) @ h(in_gamma) @ in_gamma @ q
-    qh_gh_b = h(q) @ h(in_gamma) @ in_b
-    bh_c_q = h(in_b) @ in_c @ q
-    bh_g_q = h(in_b) @ in_gamma @ q
-    bh_b = h(in_b) @ in_b
-
-    # online phase - sweep through domain
-    for i in range(domain.size):
-        a_reduced = q.T @ a_in_domain[i] @ q  # TODO: calculate q.T once and reuse?
-        b_reduced = q.T @ b_in_domain[i]
-        x = solve_linear(a_reduced, b_reduced)
-
-        err_est_in_domain[i] = norm(
-            h(x) @ qh_ch_c_q @ x - k(domain[i]) ** 2 * h(x) @ qh_ch_g_q @ x -
-            factor_for_b(domain[i]) * h(x) @ qh_ch_b - k(domain[i]) ** 2 * h(x) @ qh_gh_c_q @ x +
-            k(domain[i]) ** 4 * h(x) @ qh_gh_g_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * h(x) @ qh_gh_b -
-            factor_for_b(domain[i]) * bh_c_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * bh_g_q @ x +
-            factor_for_b(domain[i]) ** 2 * bh_b
-        )
-
-    plt.semilogy(domain, err_est_in_domain)
-    plt.title("Error estimator in domain")
-    plt.xlabel("Domain")
-    plt.ylabel("Error estimator")
-    # plt.show()
+    if PLOT_RESULTS:
+        plt.semilogy(domain, err_est_in_domain)
+        plt.title("Error estimator in domain")
+        plt.xlabel("Domain")
+        plt.ylabel("Error estimator")
+        plt.show()
 
     return err_est_in_domain
 
@@ -304,3 +266,26 @@ class OfflinePhaseMatrices:
     bh_c_q = None
     bh_g_q = None
     bh_b = None
+
+
+class TimeStatistics:
+    times = {"Whole": 0.0}
+    clock = 0.0
+
+    def start_clock(self):
+        self.clock = time.time()
+
+    def add_time(self, time_name: str):
+        if time_name not in self.times:
+            self.times[time_name] = 0.0
+
+        self.times[time_name] += time.time() - self.clock
+        self.clock = time.time()
+
+    def add_custom_time(self, time_name: str, custom_clock: float):
+        self.times[time_name] += time.time() - custom_clock
+
+    def print_statistics(self):
+        for time_name in self.times:
+            time = self.times[time_name]
+            print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")

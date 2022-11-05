@@ -4,9 +4,8 @@ from numpy.linalg import norm
 from scipy.sparse import csc_array
 from test_helpers import finite_element_method_model_order_reduction_gsm, finite_element_method_gsm
 
-
 if __name__ == "__main__":
-    frequency_points = np.linspace(3e9, 5e9, 1001)
+    frequency_points = np.linspace(3e9, 5e9, 101)
     gate_count = 2
 
     in_c = csc_array(np.load("data/Ct.npy"))
