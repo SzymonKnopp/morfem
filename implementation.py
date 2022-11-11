@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 ERROR_THRESHOLD = 1e-6
 USE_EQUALLY_DISTRIBUTED = False
 EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.95  # in range <0, 1)
-PLOT_RESULTS = False
+PLOT_RESULTS = True
 
 def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_domain: np.ndarray):
     x_in_domain = np.zeros(b_in_domain.shape)
@@ -72,10 +72,12 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
     time_stats.start_clock()
     whole_time_clock = time_stats.clock
 
-    q = np.hstack((  # starting points in projection base
+    initial_vectors = np.hstack((  # starting points in projection base
         solve_linear(a_in_domain[0], b_in_domain[0]),
         solve_linear(a_in_domain[-1], b_in_domain[-1])
     ))
+    # q = orthogonalize_and_stack(initial_vectors)
+    q = np.linalg.svd(initial_vectors, full_matrices=False)[0]
 
     ch_c = h(in_c) @ in_c
     ch_g = h(in_c) @ in_gamma
@@ -100,6 +102,7 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
     error_in_iteration = np.empty((0, b_in_domain.shape[0]))
 
     time_stats.add_time("Before offline")
+
     while True:
         q_new, error = new_solution_for_projection_base(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
         error_in_iteration = np.vstack((error_in_iteration, error))
@@ -116,16 +119,18 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
         opm.bh_c_q = np.hstack((opm.bh_c_q, bh_c @ q_new))
         opm.bh_g_q = np.hstack((opm.bh_g_q, bh_g @ q_new))
 
+        # q = orthogonalize_and_stack(q_new, q)
         q = np.hstack((q, q_new))
+        q = np.linalg.svd(q, full_matrices=False)[0]
         time_stats.add_time("Offline")
 
-    q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q TODO: orthonormalize in offline phase - only new vectors
+    # q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q TODO: orthonormalize in offline phase - only new vectors https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process
 
     time_stats.add_custom_time("Whole", whole_time_clock)
     time_stats.print_statistics()
 
     if PLOT_RESULTS:
-        plt.title("Estymator błędu w iteracjach") # that takes a long while!
+        plt.title("Estymator błędu w iteracjach")
         plt.xlabel("Dziedzina")
         plt.ylabel("Błąd")
         for i in range(error_in_iteration.shape[0]):
@@ -237,6 +242,40 @@ def h(array: np.ndarray | csc_array):
         raise Exception("array has to be two-dimensional")
 
     return array.conj().T
+
+
+def orthogonalize_and_stack(new_vectors: np.ndarray, base: np.ndarray = None) -> np.ndarray:
+    """expands base by new vectors, orthogonalizes them to the existing base or creates a new one"""
+    if new_vectors.ndim != 2:
+        raise Exception("new_vectors has to be two-dimensional")
+    if base is not None and base.ndim != 2:
+        raise Exception("base has to be two-dimensional or None")
+
+    for i in range(new_vectors.shape[1]):
+        if base is None:
+            normalized = new_vectors[:, i] / norm(new_vectors[:, i])
+            base = normalized.reshape((normalized.shape[0], 1))
+            continue
+
+        orthonormalized = orthonormalize_vector_to_base(new_vectors[:, i], base)
+        base = np.hstack((base, orthonormalized.reshape((orthonormalized.size, 1))))
+
+    return base
+
+
+def orthonormalize_vector_to_base(vector: np.ndarray, base: np.ndarray) -> np.ndarray:
+    """uses Gram-Schmidt process to orthonormalize input vector to the base of orthonormalized vectors"""
+    if vector.ndim != 1 or base.ndim != 2:
+        raise Exception("vector has to be one-dimensional and base has to be two-dimensional")
+
+    def project(vector: np.ndarray, base_vector: np.ndarray):
+        return base_vector * np.inner(vector, base_vector) # / np.inner(base_vector, base_vector) not necessary because vectors are normalized
+
+    result = vector.copy()
+    for i in range(base.shape[1]):
+        result -= project(vector, base[:, i])
+
+    return result / norm(result)
 
 
 def k(frequency: float):
