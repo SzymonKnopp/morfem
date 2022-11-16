@@ -9,10 +9,12 @@ from scipy.sparse.linalg import splu
 from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt
 
-ERROR_THRESHOLD = 1e-6
+ERROR_THRESHOLD = 1e-7
 USE_EQUALLY_DISTRIBUTED = False
 EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.95  # in range <0, 1)
-PLOT_RESULTS = False
+PLOT_GREEDY_ITERATIONS = False
+USE_OPM = False  # orthonormalize only new vectors in projection base, expand offline phase matrices
+
 
 def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_domain: np.ndarray):
     x_in_domain = np.zeros(b_in_domain.shape)
@@ -32,15 +34,11 @@ def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc
     a_reduced_in_domain = np.zeros([b_in_domain.shape[0], q.shape[1], q.shape[1]])
     b_reduced_in_domain = np.zeros([b_in_domain.shape[0], q.shape[1], b_in_domain.shape[2]])
 
-    start = time.time()
     for i in range(b_in_domain.shape[0]):
         a_reduced_in_domain[i] = q.T @ a_in_domain[i] @ q  # TODO: calculate q_mat.T once and reuse?
         b_reduced_in_domain[i] = q.T @ b_in_domain[i]
-    #print("A and B pre-calculation: ", time.time() - start, " s")
 
-    start = time.time()
     x_in_domain = solve_finite_element_method(a_reduced_in_domain, b_reduced_in_domain)
-    #print("FEM: ", time.time() - start, " s")
 
     return x_in_domain, b_reduced_in_domain
 
@@ -72,60 +70,70 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
     time_stats.start_clock()
     whole_time_clock = time_stats.clock
 
-    q = np.hstack((  # starting points in projection base
+    initial_vectors = np.hstack((  # starting points in projection base
         solve_linear(a_in_domain[0], b_in_domain[0]),
         solve_linear(a_in_domain[-1], b_in_domain[-1])
     ))
-
-    ch_c = h(in_c) @ in_c
-    ch_g = h(in_c) @ in_gamma
-    gh_c = h(in_gamma) @ in_c
-    gh_g = h(in_gamma) @ in_gamma
-    ch_b = h(in_c) @ in_b
-    gh_b = h(in_gamma) @ in_b
-    bh_c = h(in_b) @ in_c
-    bh_g = h(in_b) @ in_gamma
+    # q = np.linalg.svd(initial_vectors, full_matrices=False)[0]  # orthonormalize
+    q = np.linalg.qr(initial_vectors)[0]
 
     opm = OfflinePhaseMatrices()
-    opm.qh_ch_c_q = h(q) @ ch_c @ q
-    opm.qh_ch_g_q = h(q) @ ch_g @ q
-    opm.qh_gh_c_q = h(q) @ gh_c @ q
-    opm.qh_gh_g_q = h(q) @ gh_g @ q
-    opm.qh_ch_b = h(q) @ ch_b
-    opm.qh_gh_b = h(q) @ gh_b
-    opm.bh_c_q = bh_c @ q
-    opm.bh_g_q = bh_g @ q
-    opm.bh_b = h(in_b) @ in_b
+
+    if USE_OPM:
+        ch_c = h(in_c) @ in_c
+        ch_g = h(in_c) @ in_gamma
+        gh_c = h(in_gamma) @ in_c
+        gh_g = h(in_gamma) @ in_gamma
+        ch_b = h(in_c) @ in_b
+        gh_b = h(in_gamma) @ in_b
+        bh_c = h(in_b) @ in_c
+        bh_g = h(in_b) @ in_gamma
+
+        opm.qh_ch_c_q = h(q) @ ch_c @ q
+        opm.qh_ch_g_q = h(q) @ ch_g @ q
+        opm.qh_gh_c_q = h(q) @ gh_c @ q
+        opm.qh_gh_g_q = h(q) @ gh_g @ q
+        opm.qh_ch_b = h(q) @ ch_b
+        opm.qh_gh_b = h(q) @ gh_b
+        opm.bh_c_q = bh_c @ q
+        opm.bh_g_q = bh_g @ q
+        opm.bh_b = h(in_b) @ in_b
 
     error_in_iteration = np.empty((0, b_in_domain.shape[0]))
 
     time_stats.add_time("Before offline")
+
     while True:
         q_new, error = new_solution_for_projection_base(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
         error_in_iteration = np.vstack((error_in_iteration, error))
         if q_new is None:
             break
 
-        # expand offline phase matrices
-        opm.qh_ch_c_q = expand_matrix(opm.qh_ch_c_q, q, ch_c, q_new)
-        opm.qh_ch_g_q = expand_matrix(opm.qh_ch_g_q, q, ch_g, q_new)
-        opm.qh_gh_c_q = expand_matrix(opm.qh_gh_c_q, q, gh_c, q_new)
-        opm.qh_gh_g_q = expand_matrix(opm.qh_gh_g_q, q, gh_g, q_new)
-        opm.qh_ch_b = np.vstack((opm.qh_ch_b, h(q_new) @ ch_b))
-        opm.qh_gh_b = np.vstack((opm.qh_gh_b, h(q_new) @ gh_b))
-        opm.bh_c_q = np.hstack((opm.bh_c_q, bh_c @ q_new))
-        opm.bh_g_q = np.hstack((opm.bh_g_q, bh_g @ q_new))
+        if USE_OPM:
+            q_new = orthonormalize_to_base(q_new, q)
 
-        q = np.hstack((q, q_new))
+            # expand offline phase matrices
+            opm.qh_ch_c_q = expand_matrix(opm.qh_ch_c_q, q, ch_c, q_new)
+            opm.qh_ch_g_q = expand_matrix(opm.qh_ch_g_q, q, ch_g, q_new)
+            opm.qh_gh_c_q = expand_matrix(opm.qh_gh_c_q, q, gh_c, q_new)
+            opm.qh_gh_g_q = expand_matrix(opm.qh_gh_g_q, q, gh_g, q_new)
+            opm.qh_ch_b = np.vstack((opm.qh_ch_b, h(q_new) @ ch_b))
+            opm.qh_gh_b = np.vstack((opm.qh_gh_b, h(q_new) @ gh_b))
+            opm.bh_c_q = np.hstack((opm.bh_c_q, bh_c @ q_new))
+            opm.bh_g_q = np.hstack((opm.bh_g_q, bh_g @ q_new))
+
+            q = np.hstack((q, q_new))
+        else:
+            q = np.hstack((q, q_new))
+            q = np.linalg.svd(q, full_matrices=False)[0]
+
         time_stats.add_time("Offline")
-
-    q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q TODO: orthonormalize in offline phase - only new vectors
 
     time_stats.add_custom_time("Whole", whole_time_clock)
     time_stats.print_statistics()
 
-    if PLOT_RESULTS:
-        plt.title("Estymator błędu w iteracjach") # that takes a long while!
+    if PLOT_GREEDY_ITERATIONS:
+        plt.title("Estymator błędu w iteracjach")
         plt.xlabel("Dziedzina")
         plt.ylabel("Błąd")
         for i in range(error_in_iteration.shape[0]):
@@ -160,6 +168,37 @@ def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.n
 def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
     err_est_in_domain = np.empty(b_in_domain.shape[0])
 
+    if USE_OPM:
+        qh_ch_c_q = opm.qh_ch_c_q
+        qh_ch_g_q = opm.qh_ch_g_q
+        qh_ch_b = opm.qh_ch_b
+        qh_gh_c_q = opm.qh_gh_c_q
+        qh_gh_g_q = opm.qh_gh_g_q
+        qh_gh_b = opm.qh_gh_b
+        bh_c_q = opm.bh_c_q
+        bh_g_q = opm.bh_g_q
+        bh_b = opm.bh_b
+    else:
+        # offline phase - calculate factors not determined by domain TODO: calculate and reuse things like qh_ch
+        ch_c = h(in_c) @ in_c
+        ch_g = h(in_c) @ in_gamma
+        gh_c = h(in_gamma) @ in_c
+        gh_g = h(in_gamma) @ in_gamma
+        ch_b = h(in_c) @ in_b
+        gh_b = h(in_gamma) @ in_b
+        bh_c = h(in_b) @ in_c
+        bh_g = h(in_b) @ in_gamma
+
+        qh_ch_c_q = h(q) @ h(in_c) @ in_c @ q
+        qh_ch_g_q = h(q) @ h(in_c) @ in_gamma @ q
+        qh_ch_b = h(q) @ h(in_c) @ in_b
+        qh_gh_c_q = h(q) @ h(in_gamma) @ in_c @ q
+        qh_gh_g_q = h(q) @ h(in_gamma) @ in_gamma @ q
+        qh_gh_b = h(q) @ h(in_gamma) @ in_b
+        bh_c_q = h(in_b) @ in_c @ q
+        bh_g_q = h(in_b) @ in_gamma @ q
+        bh_b = h(in_b) @ in_b
+
     in_c_reduced = q.T @ in_c @ q  # TODO: calculate q.T once and reuse?
     in_gamma_reduced = q.T @ in_gamma @ q
     in_b_reduced = q.T @ in_b
@@ -175,16 +214,16 @@ def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np
         time_stats.add_time("Online - solve")
 
         err_est_in_domain[i] = norm(
-            h(x) @ opm.qh_ch_c_q @ x - k(domain[i]) ** 2 * h(x) @ opm.qh_ch_g_q @ x -
-            factor_for_b(domain[i]) * h(x) @ opm.qh_ch_b - k(domain[i]) ** 2 * h(x) @ opm.qh_gh_c_q @ x +
-            k(domain[i]) ** 4 * h(x) @ opm.qh_gh_g_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * h(x) @ opm.qh_gh_b -
-            factor_for_b(domain[i]) * opm.bh_c_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * opm.bh_g_q @ x +
-            factor_for_b(domain[i]) ** 2 * opm.bh_b
+            h(x) @ qh_ch_c_q @ x - k(domain[i]) ** 2 * h(x) @ qh_ch_g_q @ x -
+            factor_for_b(domain[i]) * h(x) @ qh_ch_b - k(domain[i]) ** 2 * h(x) @ qh_gh_c_q @ x +
+            k(domain[i]) ** 4 * h(x) @ qh_gh_g_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * h(x) @ qh_gh_b -
+            factor_for_b(domain[i]) * bh_c_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * bh_g_q @ x +
+            factor_for_b(domain[i]) ** 2 * bh_b
         )
 
         time_stats.add_time("Online - add")
 
-    if PLOT_RESULTS:
+    if PLOT_GREEDY_ITERATIONS:
         plt.semilogy(domain, err_est_in_domain)
         plt.title("Error estimator in domain")
         plt.xlabel("Domain")
@@ -237,6 +276,41 @@ def h(array: np.ndarray | csc_array):
         raise Exception("array has to be two-dimensional")
 
     return array.conj().T
+
+
+def orthonormalize_to_base(vectors: np.ndarray, base: np.ndarray) -> np.ndarray:
+    """expands base by new vectors, orthormalizes them to the existing base or creates a new one"""
+    if vectors.ndim != 2:
+        raise Exception("new_vectors has to be two-dimensional")
+    if base is not None and base.ndim != 2:
+        raise Exception("base has to be two-dimensional or None")
+
+    orthonormalized_vectors = None
+
+    for i in range(vectors.shape[1]):
+        orthonormalized = orthonormalize_vector_to_base(vectors[:, i], base)
+        base = np.hstack((base, orthonormalized.reshape((orthonormalized.size, 1))))
+        if orthonormalized_vectors is None:
+            orthonormalized_vectors = orthonormalized.reshape((orthonormalized.shape[0], 1))
+        else:
+            orthonormalized_vectors = np.hstack((orthonormalized_vectors, orthonormalized.reshape((orthonormalized.size, 1))))
+
+    return orthonormalized_vectors
+
+
+def orthonormalize_vector_to_base(vector: np.ndarray, base: np.ndarray) -> np.ndarray:
+    """uses Gram-Schmidt process to orthonormalize input vector to the base of orthonormalized vectors"""
+    if vector.ndim != 1 or base.ndim != 2:
+        raise Exception("vector has to be one-dimensional and base has to be two-dimensional")
+
+    def project(vector: np.ndarray, base_vector: np.ndarray):
+        return base_vector * np.inner(vector, base_vector) # / np.inner(base_vector, base_vector) not necessary because vectors are normalized
+
+    result = vector.copy()
+    for i in range(base.shape[1]):
+        result -= project(vector, base[:, i])
+
+    return result / norm(result)
 
 
 def k(frequency: float):
