@@ -16,47 +16,44 @@ PLOT_GREEDY_ITERATIONS = False
 USE_OPM = False  # orthonormalize only new vectors in projection base, expand offline phase matrices
 
 
-def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_domain: np.ndarray):
-    x_in_domain = np.zeros(b_in_domain.shape)
-    for i in range(x_in_domain.shape[0]):
-        x = solve_linear(a_in_domain[i], b_in_domain[i])
-        x_in_domain[i] = x
+def solve_finite_element_method(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+    x_in_domain = np.zeros((domain.size, in_b.shape[0], in_b.shape[1]))
+    for i in range(domain.size):
+        x_in_domain[i] = solve_fem_point(domain[i], in_gamma, in_c, in_b, kte1, kte2)
 
-    return x_in_domain
+    b_in_domain = np.zeros((domain.size, in_b.shape[0], in_b.shape[1]))
+    for i in range(domain.size):
+        b_in_domain[i] = impulse_vector(domain[i], in_b, kte1, kte2)
+
+    return x_in_domain, b_in_domain
 
 
-def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+def solve_finite_element_method_with_model_order_reduction(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
     start = time.time()
-    q = projection_base(a_in_domain, b_in_domain, domain, in_c, in_gamma, in_b, kte1, kte2) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(a_in_domain, b_in_domain)
+    q = projection_base(domain, in_c, in_gamma, in_b, kte1, kte2) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(domain, in_c, in_gamma, in_b, kte1, kte2)
     print("Projection base: ", time.time() - start, " s")
 
     # reduce model order - 5.5
-    a_reduced_in_domain = np.zeros([b_in_domain.shape[0], q.shape[1], q.shape[1]])
-    b_reduced_in_domain = np.zeros([b_in_domain.shape[0], q.shape[1], b_in_domain.shape[2]])
+    q_t = q.T
+    in_c = q_t @ in_c @ q
+    in_gamma = q_t @ in_gamma @ q
+    in_b = q_t @ in_b
 
-    for i in range(b_in_domain.shape[0]):
-        a_reduced_in_domain[i] = q.T @ a_in_domain[i] @ q  # TODO: calculate q_mat.T once and reuse?
-        b_reduced_in_domain[i] = q.T @ b_in_domain[i]
-
-    x_in_domain = solve_finite_element_method(a_reduced_in_domain, b_reduced_in_domain)
-
-    return x_in_domain, b_reduced_in_domain
+    return solve_finite_element_method(domain, in_c, in_gamma, in_b, kte1, kte2)
 
 
-def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domain: np.ndarray):
+def projection_base_equally_distributed(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
     reduction_indices = np.linspace(  # indices of points to be added to projection base Q
         0,
-        b_in_domain.shape[0] - 1,
-        math.floor(b_in_domain.shape[0] * (1 - EQUALLY_DISTRIBUTED_REDUCTION_RATE)),
+        domain.size - 1,
+        math.floor(domain.size * (1 - EQUALLY_DISTRIBUTED_REDUCTION_RATE)),
         dtype=int
     )
-    vector_count = b_in_domain.shape[2]  # how many vectors does a single Ax = b solution contain
-    q = np.empty((b_in_domain.shape[1], vector_count * reduction_indices.size))
+    vector_count = in_b.shape[1]  # how many vectors does a single Ax = b solution contain
+    q = np.empty((in_b.shape[0], vector_count * reduction_indices.size))
 
     for i in range(reduction_indices.size):
-        a = a_in_domain[reduction_indices[i]]
-        b = b_in_domain[reduction_indices[i]]
-        q[:, vector_count*i:vector_count*i+vector_count] = solve_linear(a, b)
+        q[:, vector_count*i:vector_count*i+vector_count] = solve_fem_point(domain[reduction_indices[i]], in_gamma, in_c, in_b, kte1, kte2)
 
     q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q
 
@@ -65,17 +62,16 @@ def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domai
     return q
 
 
-def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
     time_stats = TimeStatistics()
     time_stats.start_clock()
     whole_time_clock = time_stats.clock
 
     initial_vectors = np.hstack((  # starting points in projection base
-        solve_linear(a_in_domain[0], b_in_domain[0]),
-        solve_linear(a_in_domain[-1], b_in_domain[-1])
+        solve_fem_point(domain[0], in_gamma, in_c, in_b, kte1, kte2),
+        solve_fem_point(domain[-1], in_gamma, in_c, in_b, kte1, kte2),
     ))
-    # q = np.linalg.svd(initial_vectors, full_matrices=False)[0]  # orthonormalize
-    q = np.linalg.qr(initial_vectors)[0]
+    q = np.linalg.svd(initial_vectors, full_matrices=False)[0]  # orthonormalize
 
     opm = OfflinePhaseMatrices()
 
@@ -99,12 +95,12 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
         opm.bh_g_q = bh_g @ q
         opm.bh_b = h(in_b) @ in_b
 
-    error_in_iteration = np.empty((0, b_in_domain.shape[0]))
+    error_in_iteration = np.empty((0, domain.size))
 
     time_stats.add_time("Before offline")
 
     while True:
-        q_new, error = new_solution_for_projection_base(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
+        q_new, error = new_solution_for_projection_base(q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
         error_in_iteration = np.vstack((error_in_iteration, error))
         if q_new is None:
             break
@@ -144,14 +140,14 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
     return q
 
 
-def new_solution_for_projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
-    error = error_estimator(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
+def new_solution_for_projection_base(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
+    error = error_estimator(q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
     idx_max = error.argmax()
 
     if error[idx_max] < ERROR_THRESHOLD:
         return None, error
 
-    return solve_linear(a_in_domain[idx_max], b_in_domain[idx_max]), error
+    return solve_fem_point(domain[idx_max], in_gamma, in_c, in_b, kte1, kte2), error
 
 
 def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, domain: np.ndarray):
@@ -165,8 +161,8 @@ def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.n
     return residual_norm_in_domain
 
 
-def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
-    err_est_in_domain = np.empty(b_in_domain.shape[0])
+def error_estimator(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
+    err_est_in_domain = np.empty(domain.size)
 
     if USE_OPM:
         qh_ch_c_q = opm.qh_ch_c_q
@@ -268,6 +264,10 @@ def solve_linear(a: csc_array | np.ndarray, b: np.ndarray):
         lu = lu_factor(a)
         e_mat = lu_solve(lu, b)
     return e_mat
+
+
+def solve_fem_point(t, gamma, c, b, kte1, kte2):
+    return solve_linear(system_matrix(t, c, gamma), impulse_vector(t, b, kte1, kte2))
 
 
 def h(array: np.ndarray | csc_array):

@@ -48,14 +48,8 @@ def equally_distributed_points(source: np.ndarray, amount: int):
 def finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b, in_kte1, in_kte2):
     gsm_in_frequency = np.zeros([frequency_points.size, gate_count, gate_count], dtype=complex)
 
-    a_in_domain = [csc_array((in_c.shape[0], in_c.shape[1]))] * frequency_points.size
-    b_in_domain = np.zeros([frequency_points.size, in_c.shape[0], gate_count])
-    for i in range(frequency_points.size):
-        a_in_domain[i] = system_matrix(frequency_points[i], in_c, in_gamma)
-        b_in_domain[i] = impulse_vector(frequency_points[i], in_b, in_kte1, in_kte2)
-
     start = time.time()
-    x_in_domain = solve_finite_element_method(a_in_domain, b_in_domain)
+    x_in_domain, b_in_domain = solve_finite_element_method(frequency_points, in_c, in_gamma, in_b, in_kte1, in_kte2)
     print("No MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
@@ -67,14 +61,8 @@ def finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b
 def finite_element_method_model_order_reduction_gsm(frequency_points, gate_count, in_c, in_gamma, in_b, in_kte1, in_kte2):
     gsm_in_frequency = np.zeros([frequency_points.size, gate_count, gate_count], dtype=complex)
 
-    a_in_domain = [csc_array((in_c.shape[0], in_c.shape[1]))] * frequency_points.size
-    b_in_domain = np.zeros([frequency_points.size, in_c.shape[0], gate_count])
-    for i in range(frequency_points.size):
-        a_in_domain[i] = system_matrix(frequency_points[i], in_c, in_gamma)
-        b_in_domain[i] = impulse_vector(frequency_points[i], in_b, in_kte1, in_kte2)
-
     start = time.time()
-    x_in_domain, b_reduced_in_domain = solve_finite_element_method_with_model_order_reduction(a_in_domain, b_in_domain, frequency_points, in_c, in_gamma, in_b, in_kte1, in_kte2)
+    x_in_domain, b_reduced_in_domain = solve_finite_element_method_with_model_order_reduction(frequency_points, in_c, in_gamma, in_b, in_kte1, in_kte2)
     print("MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
