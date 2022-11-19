@@ -21,11 +21,11 @@ def equally_distributed_points(source: np.ndarray, amount: int):
     return source[indices]
 
 
-def finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b, in_kte1, in_kte2):
+def finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b):
     gsm_in_frequency = np.zeros([frequency_points.size, gate_count, gate_count], dtype=complex)
 
     start = time.time()
-    x_in_domain, b_in_domain = solve_finite_element_method(frequency_points, in_c, in_gamma, in_b, in_kte1, in_kte2)
+    x_in_domain, b_in_domain = solve_finite_element_method(frequency_points, in_c, in_gamma, in_b)
     print("No MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
@@ -34,11 +34,11 @@ def finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b
     return gsm_in_frequency
 
 
-def finite_element_method_model_order_reduction_gsm(frequency_points, gate_count, in_c, in_gamma, in_b, in_kte1, in_kte2):
+def finite_element_method_model_order_reduction_gsm(frequency_points, gate_count, in_c, in_gamma, in_b):
     gsm_in_frequency = np.zeros([frequency_points.size, gate_count, gate_count], dtype=complex)
 
     start = time.time()
-    x_in_domain, b_reduced_in_domain = solve_finite_element_method_with_model_order_reduction(frequency_points, in_c, in_gamma, in_b, in_kte1, in_kte2)
+    x_in_domain, b_reduced_in_domain = solve_finite_element_method_with_model_order_reduction(frequency_points, in_c, in_gamma, in_b)
     print("MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):

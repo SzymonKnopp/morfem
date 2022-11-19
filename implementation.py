@@ -3,12 +3,12 @@ import math
 import numpy as np
 from typing import List
 from numpy.linalg import norm
-from scipy.sparse import csc_array, isspmatrix_csc
+from scipy.sparse import csc_array, issparse
 from scipy.sparse.linalg import splu
 from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt
 
-from move_to_test_helpers import wave_impedance_te, system_matrix, impulse_vector
+from move_to_test_helpers import system_matrix, impulse_vector, b_coefficient
 
 ERROR_THRESHOLD = 1e-7
 USE_EQUALLY_DISTRIBUTED = False
@@ -17,21 +17,21 @@ PLOT_GREEDY_ITERATIONS = False
 USE_OPM = False  # orthonormalize only new vectors in projection base, expand offline phase matrices
 
 
-def solve_finite_element_method(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+def solve_finite_element_method(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array):
     x_in_domain = np.zeros((domain.size, in_b.shape[0], in_b.shape[1]))
     for i in range(domain.size):
-        x_in_domain[i] = solve_fem_point(domain[i], in_gamma, in_c, in_b, kte1, kte2)
+        x_in_domain[i] = solve_fem_point(domain[i], in_gamma, in_c, in_b)
 
     b_in_domain = np.zeros((domain.size, in_b.shape[0], in_b.shape[1]))
     for i in range(domain.size):
-        b_in_domain[i] = impulse_vector(domain[i], in_b, kte1, kte2)
+        b_in_domain[i, :, :] = impulse_vector(domain[i], in_b)
 
     return x_in_domain, b_in_domain
 
 
-def solve_finite_element_method_with_model_order_reduction(domain: np.ndarray, in_c_reduced: csc_array, in_gamma_reduced: csc_array, in_b_reduced: csc_array, kte1, kte2):
+def solve_finite_element_method_with_model_order_reduction(domain: np.ndarray, in_c_reduced: csc_array, in_gamma_reduced: csc_array, in_b_reduced: csc_array):
     start = time.time()
-    q = projection_base(domain, in_c_reduced, in_gamma_reduced, in_b_reduced, kte1, kte2) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(domain, in_c_reduced, in_gamma_reduced, in_b_reduced, kte1, kte2)
+    q = projection_base(domain, in_c_reduced, in_gamma_reduced, in_b_reduced) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(domain, in_c_reduced, in_gamma_reduced, in_b_reduced)
     print("Projection base: ", time.time() - start, " s")
 
     # reduce model order - 5.5
@@ -40,10 +40,10 @@ def solve_finite_element_method_with_model_order_reduction(domain: np.ndarray, i
     in_gamma_reduced = q_t @ in_gamma_reduced @ q
     in_b_reduced = q_t @ in_b_reduced
 
-    return solve_finite_element_method(domain, in_c_reduced, in_gamma_reduced, in_b_reduced, kte1, kte2)
+    return solve_finite_element_method(domain, in_c_reduced, in_gamma_reduced, in_b_reduced)
 
 
-def projection_base_equally_distributed(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+def projection_base_equally_distributed(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array):
     reduction_indices = np.linspace(  # indices of points to be added to projection base Q
         0,
         domain.size - 1,
@@ -54,7 +54,7 @@ def projection_base_equally_distributed(domain: np.ndarray, in_c: csc_array, in_
     q = np.empty((in_b.shape[0], vector_count * reduction_indices.size))
 
     for i in range(reduction_indices.size):
-        q[:, vector_count*i:vector_count*i+vector_count] = solve_fem_point(domain[reduction_indices[i]], in_gamma, in_c, in_b, kte1, kte2)
+        q[:, vector_count*i:vector_count*i+vector_count] = solve_fem_point(domain[reduction_indices[i]], in_gamma, in_c, in_b)
 
     q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q
 
@@ -63,14 +63,14 @@ def projection_base_equally_distributed(domain: np.ndarray, in_c: csc_array, in_
     return q
 
 
-def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array):
     time_stats = TimeStatistics()
     time_stats.start_clock()
     whole_time_clock = time_stats.clock
 
     initial_vectors = np.hstack((  # starting points in projection base
-        solve_fem_point(domain[0], in_gamma, in_c, in_b, kte1, kte2),
-        solve_fem_point(domain[-1], in_gamma, in_c, in_b, kte1, kte2),
+        solve_fem_point(domain[0], in_gamma, in_c, in_b),
+        solve_fem_point(domain[-1], in_gamma, in_c, in_b),
     ))
     q = np.linalg.svd(initial_vectors, full_matrices=False)[0]  # orthonormalize
 
@@ -101,7 +101,7 @@ def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in
     time_stats.add_time("Before offline")
 
     while True:
-        q_new, error = new_solution_for_projection_base(q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
+        q_new, error = new_solution_for_projection_base(q, in_c, in_gamma, in_b, domain, opm, time_stats)
         error_in_iteration = np.vstack((error_in_iteration, error))
         if q_new is None:
             break
@@ -141,14 +141,14 @@ def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in
     return q
 
 
-def new_solution_for_projection_base(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
-    error = error_estimator(q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
+def new_solution_for_projection_base(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, opm, time_stats):
+    error = error_estimator(q, in_c, in_gamma, in_b, domain, opm, time_stats)
     idx_max = error.argmax()
 
     if error[idx_max] < ERROR_THRESHOLD:
         return None, error
 
-    return solve_fem_point(domain[idx_max], in_gamma, in_c, in_b, kte1, kte2), error
+    return solve_fem_point(domain[idx_max], in_gamma, in_c, in_b), error
 
 
 def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, domain: np.ndarray):
@@ -162,7 +162,7 @@ def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.n
     return residual_norm_in_domain
 
 
-def error_estimator(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
+def error_estimator(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, opm, time_stats):
     err_est_in_domain = np.empty(domain.size)
 
     if USE_OPM:
@@ -206,7 +206,7 @@ def error_estimator(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: c
     # online phase - sweep through domain
     for i in range(domain.size):
         t = domain[i]
-        x = solve_fem_point(t, in_gamma_reduced, in_c_reduced, in_b_reduced, kte1, kte2)
+        x = solve_fem_point(t, in_gamma_reduced, in_c_reduced, in_b_reduced)
 
         time_stats.add_time("Online - solve")
 
@@ -243,18 +243,19 @@ def expand_matrix(original: np.ndarray, old_q: np.ndarray, middle: np.ndarray, n
     return np.vstack((top, bottom))
 
 
-def solve_linear(a: csc_array | np.ndarray, b: np.ndarray):
+def solve_linear(a: csc_array | np.ndarray, b: csc_array | np.ndarray):
     """solves Ax = b"""
-    if isspmatrix_csc(a):  # LU factorization - 3.27
+    if issparse(a):  # LU factorization - 3.27
         e_mat = splu(a).solve(b)
     else:
         lu = lu_factor(a)
         e_mat = lu_solve(lu, b)
+
     return e_mat
 
 
-def solve_fem_point(t, gamma, c, b, kte1, kte2):
-    return solve_linear(system_matrix(t, c, gamma), impulse_vector(t, b, kte1, kte2))
+def solve_fem_point(t, gamma, c, b):
+    return solve_linear(system_matrix(t, c, gamma), impulse_vector(t, b))
 
 
 def h(array: np.ndarray | csc_array):
@@ -301,7 +302,7 @@ def orthonormalize_vector_to_base(vector: np.ndarray, base: np.ndarray) -> np.nd
 
 
 def factor_for_b(frequency: float):
-    return math.sqrt(1 / wave_impedance_te(54.5976295582387, frequency))
+    return b_coefficient(frequency)
 
 
 class OfflinePhaseMatrices:
