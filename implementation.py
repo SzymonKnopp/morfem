@@ -10,11 +10,61 @@ import matplotlib.pyplot as plt
 
 from move_to_test_helpers import system_matrix, impulse_vector, b_coefficient
 
-ERROR_THRESHOLD = 1e-7
+ERROR_THRESHOLD = 1e-6
 USE_EQUALLY_DISTRIBUTED = False
 EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.95  # in range <0, 1)
 PLOT_GREEDY_ITERATIONS = False
 USE_OPM = False  # orthonormalize only new vectors in projection base, expand offline phase matrices
+
+
+class ModelDefinition:
+    a0: csc_array = None
+    a1: csc_array = None
+    a2: csc_array = None
+    b: csc_array = None
+    domain: np.ndarray = None
+
+
+class OfflinePhaseMatrices:
+    qh_a0h_a0_q = None
+    qh_a0h_a1_q = None
+    qh_a0h_a2_q = None
+    qh_a0h_b = None
+    qh_a1h_a0_q = None
+    qh_a1h_a1_q = None
+    qh_a1h_a2_q = None
+    qh_a1h_b = None
+    qh_a2h_a0_q = None
+    qh_a2h_a1_q = None
+    qh_a2h_a2_q = None
+    qh_a2h_b = None
+    bh_a0_q = None
+    bh_a1_q = None
+    bh_a2_q = None
+    bh_b = None
+
+
+class TimeStatistics:
+    times = {"Whole": 0.0}
+    clock = 0.0
+
+    def start_clock(self):
+        self.clock = time.time()
+
+    def add_time(self, time_name: str):
+        if time_name not in self.times:
+            self.times[time_name] = 0.0
+
+        self.times[time_name] += time.time() - self.clock
+        self.clock = time.time()
+
+    def add_custom_time(self, time_name: str, custom_clock: float):
+        self.times[time_name] += time.time() - custom_clock
+
+    def print_statistics(self):
+        for time_name in self.times:
+            time = self.times[time_name]
+            print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")
 
 
 def solve_finite_element_method(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array):
@@ -74,34 +124,56 @@ def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in
     ))
     q = np.linalg.svd(initial_vectors, full_matrices=False)[0]  # orthonormalize
 
+    md = ModelDefinition()
+    md.a0 = in_c
+    md.a1 = csc_array(in_c.shape)  # empty array
+    md.a2 = in_gamma
+    md.b = in_b
+    md.domain = domain
+
     opm = OfflinePhaseMatrices()
 
     if USE_OPM:
-        ch_c = h(in_c) @ in_c
-        ch_g = h(in_c) @ in_gamma
-        gh_c = h(in_gamma) @ in_c
-        gh_g = h(in_gamma) @ in_gamma
-        ch_b = h(in_c) @ in_b
-        gh_b = h(in_gamma) @ in_b
-        bh_c = h(in_b) @ in_c
-        bh_g = h(in_b) @ in_gamma
+        a0h_a0 = h(md.a0) @ md.a0
+        a0h_a1 = h(md.a0) @ md.a1
+        a0h_a2 = h(md.a0) @ md.a2
+        a0h_b = h(md.a0) @ md.b
+        a1h_a0 = h(md.a1) @ md.a0
+        a1h_a1 = h(md.a1) @ md.a1
+        a1h_a2 = h(md.a1) @ md.a2
+        a1h_b = h(md.a1) @ md.b
+        a2h_a0 = h(md.a2) @ md.a0
+        a2h_a1 = h(md.a2) @ md.a1
+        a2h_a2 = h(md.a2) @ md.a2
+        a2h_b = h(md.a2) @ md.b
+        bh_a0 = h(md.b) @ md.a0
+        bh_a1 = h(md.b) @ md.a1
+        bh_a2 = h(md.b) @ md.a2
+        bh_b = h(md.b) @ md.b
 
-        opm.qh_ch_c_q = h(q) @ ch_c @ q
-        opm.qh_ch_g_q = h(q) @ ch_g @ q
-        opm.qh_gh_c_q = h(q) @ gh_c @ q
-        opm.qh_gh_g_q = h(q) @ gh_g @ q
-        opm.qh_ch_b = h(q) @ ch_b
-        opm.qh_gh_b = h(q) @ gh_b
-        opm.bh_c_q = bh_c @ q
-        opm.bh_g_q = bh_g @ q
-        opm.bh_b = h(in_b) @ in_b
+        opm.qh_a0h_a0_q = h(q) @ a0h_a0 @ q
+        opm.qh_a0h_a1_q = h(q) @ a0h_a1 @ q
+        opm.qh_a0h_a2_q = h(q) @ a0h_a2 @ q
+        opm.qh_a0h_b = h(q) @ a0h_b
+        opm.qh_a1h_a0_q = h(q) @ a1h_a0 @ q
+        opm.qh_a1h_a1_q = h(q) @ a1h_a1 @ q
+        opm.qh_a1h_a2_q = h(q) @ a1h_a2 @ q
+        opm.qh_a1h_b = h(q) @ a1h_b
+        opm.qh_a2h_a0_q = h(q) @ a2h_a0 @ q
+        opm.qh_a2h_a1_q = h(q) @ a2h_a1 @ q
+        opm.qh_a2h_a2_q = h(q) @ a2h_a2 @ q
+        opm.qh_a2h_b = h(q) @ a2h_b
+        opm.bh_a0_q = bh_a0 @ q
+        opm.bh_a1_q = bh_a1 @ q
+        opm.bh_a2_q = bh_a2 @ q
+        opm.bh_b = bh_b
 
     error_in_iteration = np.empty((0, domain.size))
 
     time_stats.add_time("Before offline")
 
     while True:
-        q_new, error = new_solution_for_projection_base(q, in_c, in_gamma, in_b, domain, opm, time_stats)
+        q_new, error = new_solution_for_projection_base(md, q, opm, time_stats)
         error_in_iteration = np.vstack((error_in_iteration, error))
         if q_new is None:
             break
@@ -110,14 +182,21 @@ def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in
             q_new = orthonormalize_to_base(q_new, q)
 
             # expand offline phase matrices
-            opm.qh_ch_c_q = expand_matrix(opm.qh_ch_c_q, q, ch_c, q_new)
-            opm.qh_ch_g_q = expand_matrix(opm.qh_ch_g_q, q, ch_g, q_new)
-            opm.qh_gh_c_q = expand_matrix(opm.qh_gh_c_q, q, gh_c, q_new)
-            opm.qh_gh_g_q = expand_matrix(opm.qh_gh_g_q, q, gh_g, q_new)
-            opm.qh_ch_b = np.vstack((opm.qh_ch_b, h(q_new) @ ch_b))
-            opm.qh_gh_b = np.vstack((opm.qh_gh_b, h(q_new) @ gh_b))
-            opm.bh_c_q = np.hstack((opm.bh_c_q, bh_c @ q_new))
-            opm.bh_g_q = np.hstack((opm.bh_g_q, bh_g @ q_new))
+            opm.qh_a0h_a0_q = expand_matrix(opm.qh_a0h_a0_q, q, a0h_a0, q_new)
+            opm.qh_a0h_a1_q = expand_matrix(opm.qh_a0h_a1_q, q, a0h_a1, q_new)
+            opm.qh_a0h_a2_q = expand_matrix(opm.qh_a0h_a2_q, q, a0h_a2, q_new)
+            opm.qh_a0h_b = np.vstack((opm.qh_a0h_b, h(q_new) @ a0h_b))
+            opm.qh_a1h_a0_q = expand_matrix(opm.qh_a1h_a0_q, q, a1h_a0, q_new)
+            opm.qh_a1h_a1_q = expand_matrix(opm.qh_a1h_a1_q, q, a1h_a1, q_new)
+            opm.qh_a1h_a2_q = expand_matrix(opm.qh_a1h_a2_q, q, a1h_a2, q_new)
+            opm.qh_a1h_b = np.vstack((opm.qh_a1h_b, h(q_new) @ a1h_b))
+            opm.qh_a2h_a0_q = expand_matrix(opm.qh_a2h_a0_q, q, a2h_a0, q_new)
+            opm.qh_a2h_a1_q = expand_matrix(opm.qh_a2h_a1_q, q, a2h_a1, q_new)
+            opm.qh_a2h_a2_q = expand_matrix(opm.qh_a2h_a2_q, q, a2h_a2, q_new)
+            opm.qh_a2h_b = np.vstack((opm.qh_a2h_b, h(q_new) @ a2h_b))
+            opm.bh_a0_q = np.hstack((opm.bh_a0_q , bh_a0 @ q_new))
+            opm.bh_a1_q = np.hstack((opm.bh_a1_q , bh_a1 @ q_new))
+            opm.bh_a2_q = np.hstack((opm.bh_a2_q , bh_a2 @ q_new))
 
             q = np.hstack((q, q_new))
         else:
@@ -141,14 +220,14 @@ def projection_base(domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in
     return q
 
 
-def new_solution_for_projection_base(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, opm, time_stats):
-    error = error_estimator(q, in_c, in_gamma, in_b, domain, opm, time_stats)
+def new_solution_for_projection_base(md: ModelDefinition, q: np.ndarray, opm, time_stats):
+    error = error_estimator(md, q, opm, time_stats)
     idx_max = error.argmax()
 
     if error[idx_max] < ERROR_THRESHOLD:
         return None, error
 
-    return solve_fem_point(domain[idx_max], in_gamma, in_c, in_b), error
+    return solve_fem_point(md.domain[idx_max], md.a2, md.a0, md.b), error
 
 
 def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, domain: np.ndarray):
@@ -162,66 +241,87 @@ def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.n
     return residual_norm_in_domain
 
 
-def error_estimator(q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, opm, time_stats):
-    err_est_in_domain = np.empty(domain.size)
+def error_estimator(md: ModelDefinition, q: np.ndarray, opm: OfflinePhaseMatrices, time_stats: TimeStatistics):
+    err_est_in_domain = np.empty(md.domain.size)
 
     if USE_OPM:
-        qh_ch_c_q = opm.qh_ch_c_q
-        qh_ch_g_q = opm.qh_ch_g_q
-        qh_ch_b = opm.qh_ch_b
-        qh_gh_c_q = opm.qh_gh_c_q
-        qh_gh_g_q = opm.qh_gh_g_q
-        qh_gh_b = opm.qh_gh_b
-        bh_c_q = opm.bh_c_q
-        bh_g_q = opm.bh_g_q
+        qh_a0h_a0_q = opm.qh_a0h_a0_q
+        qh_a0h_a1_q = opm.qh_a0h_a1_q
+        qh_a0h_a2_q = opm.qh_a0h_a2_q
+        qh_a0h_b = opm.qh_a0h_b
+        qh_a1h_a0_q = opm.qh_a1h_a0_q
+        qh_a1h_a1_q = opm.qh_a1h_a1_q
+        qh_a1h_a2_q = opm.qh_a1h_a2_q
+        qh_a1h_b = opm.qh_a1h_b
+        qh_a2h_a0_q = opm.qh_a2h_a0_q
+        qh_a2h_a1_q = opm.qh_a2h_a1_q
+        qh_a2h_a2_q = opm.qh_a2h_a2_q
+        qh_a2h_b = opm.qh_a2h_b
+        bh_a0_q = opm.bh_a0_q
+        bh_a1_q = opm.bh_a1_q
+        bh_a2_q = opm.bh_a2_q
         bh_b = opm.bh_b
     else:
         # offline phase - calculate factors not determined by domain TODO: calculate and reuse things like qh_ch
-        ch_c = h(in_c) @ in_c
-        ch_g = h(in_c) @ in_gamma
-        gh_c = h(in_gamma) @ in_c
-        gh_g = h(in_gamma) @ in_gamma
-        ch_b = h(in_c) @ in_b
-        gh_b = h(in_gamma) @ in_b
-        bh_c = h(in_b) @ in_c
-        bh_g = h(in_b) @ in_gamma
+        a0h_a0 = h(md.a0) @ md.a0
+        a0h_a1 = h(md.a0) @ md.a1
+        a0h_a2 = h(md.a0) @ md.a2
+        a0h_b = h(md.a0) @ md.b
+        a1h_a0 = h(md.a1) @ md.a0
+        a1h_a1 = h(md.a1) @ md.a1
+        a1h_a2 = h(md.a1) @ md.a2
+        a1h_b = h(md.a1) @ md.b
+        a2h_a0 = h(md.a2) @ md.a0
+        a2h_a1 = h(md.a2) @ md.a1
+        a2h_a2 = h(md.a2) @ md.a2
+        a2h_b = h(md.a2) @ md.b
+        bh_a0 = h(md.b) @ md.a0
+        bh_a1 = h(md.b) @ md.a1
+        bh_a2 = h(md.b) @ md.a2
+        bh_b = h(md.b) @ md.b
 
-        qh_ch_c_q = h(q) @ h(in_c) @ in_c @ q
-        qh_ch_g_q = h(q) @ h(in_c) @ in_gamma @ q
-        qh_ch_b = h(q) @ h(in_c) @ in_b
-        qh_gh_c_q = h(q) @ h(in_gamma) @ in_c @ q
-        qh_gh_g_q = h(q) @ h(in_gamma) @ in_gamma @ q
-        qh_gh_b = h(q) @ h(in_gamma) @ in_b
-        bh_c_q = h(in_b) @ in_c @ q
-        bh_g_q = h(in_b) @ in_gamma @ q
-        bh_b = h(in_b) @ in_b
+        qh_a0h_a0_q = h(q) @ a0h_a0 @ q
+        qh_a0h_a1_q = h(q) @ a0h_a1 @ q
+        qh_a0h_a2_q = h(q) @ a0h_a2 @ q
+        qh_a0h_b = h(q) @ a0h_b
+        qh_a1h_a0_q = h(q) @ a1h_a0 @ q
+        qh_a1h_a1_q = h(q) @ a1h_a1 @ q
+        qh_a1h_a2_q = h(q) @ a1h_a2 @ q
+        qh_a1h_b = h(q) @ a1h_b
+        qh_a2h_a0_q = h(q) @ a2h_a0 @ q
+        qh_a2h_a1_q = h(q) @ a2h_a1 @ q
+        qh_a2h_a2_q = h(q) @ a2h_a2 @ q
+        qh_a2h_b = h(q) @ a2h_b
+        bh_a0_q = bh_a0 @ q
+        bh_a1_q = bh_a1 @ q
+        bh_a2_q = bh_a2 @ q
+        bh_b = bh_b
 
     q_t = q.T
-    in_c_reduced = q_t @ in_c @ q
-    in_gamma_reduced = q_t @ in_gamma @ q
-    in_b_reduced = q_t @ in_b
+    in_c_reduced = q_t @ md.a0 @ q
+    in_gamma_reduced = q_t @ md.a2 @ q
+    in_b_reduced = q_t @ md.b
 
     time_stats.add_time("Offline")
 
     # online phase - sweep through domain
-    for i in range(domain.size):
-        t = domain[i]
+    for i in range(md.domain.size):
+        t = md.domain[i]
         x = solve_fem_point(t, in_gamma_reduced, in_c_reduced, in_b_reduced)
 
         time_stats.add_time("Online - solve")
 
         err_est_in_domain[i] = norm(
-            h(x) @ qh_ch_c_q @ x - t ** 2 * h(x) @ qh_ch_g_q @ x -
-            factor_for_b(t) * h(x) @ qh_ch_b - t ** 2 * h(x) @ qh_gh_c_q @ x +
-            t ** 4 * h(x) @ qh_gh_g_q @ x + factor_for_b(t) * t ** 2 * h(x) @ qh_gh_b -
-            factor_for_b(t) * bh_c_q @ x + factor_for_b(t) * t ** 2 * bh_g_q @ x +
-            factor_for_b(t) ** 2 * bh_b
+            h(x) @ qh_a0h_a0_q @ x + t * h(x) @ qh_a0h_a1_q @ x + t ** 2 * h(x) @ qh_a0h_a2_q @ x - factor_for_b(t) * h(x) @ qh_a0h_b +
+            t * h(x) @ qh_a1h_a0_q @ x + t ** 2 * h(x) @ qh_a1h_a1_q @ x + t ** 3 * h(x) @ qh_a1h_a2_q @ x - factor_for_b(t) * t * h(x) @ qh_a1h_b +
+            t ** 2 * h(x) @ qh_a2h_a0_q @ x + t ** 3 * h(x) @ qh_a2h_a1_q @ x + t ** 4 * h(x) @ qh_a2h_a2_q @ x - factor_for_b(t) * t ** 2 * h(x) @ qh_a2h_b -
+            factor_for_b(t) * bh_a0_q @ x - factor_for_b(t) * t * bh_a1_q @ x - factor_for_b(t) * t ** 2 * bh_a2_q @ x + factor_for_b(t) ** 2 * bh_b
         )
 
         time_stats.add_time("Online - add")
 
     if PLOT_GREEDY_ITERATIONS:
-        plt.semilogy(domain, err_est_in_domain)
+        plt.semilogy(md.domain, err_est_in_domain)
         plt.title("Error estimator in domain")
         plt.xlabel("Domain")
         plt.ylabel("Error estimator")
@@ -303,38 +403,3 @@ def orthonormalize_vector_to_base(vector: np.ndarray, base: np.ndarray) -> np.nd
 
 def factor_for_b(frequency: float):
     return b_coefficient(frequency)
-
-
-class OfflinePhaseMatrices:
-    qh_ch_c_q = None
-    qh_ch_g_q = None
-    qh_ch_b = None
-    qh_gh_c_q = None
-    qh_gh_g_q = None
-    qh_gh_b = None
-    bh_c_q = None
-    bh_g_q = None
-    bh_b = None
-
-
-class TimeStatistics:
-    times = {"Whole": 0.0}
-    clock = 0.0
-
-    def start_clock(self):
-        self.clock = time.time()
-
-    def add_time(self, time_name: str):
-        if time_name not in self.times:
-            self.times[time_name] = 0.0
-
-        self.times[time_name] += time.time() - self.clock
-        self.clock = time.time()
-
-    def add_custom_time(self, time_name: str, custom_clock: float):
-        self.times[time_name] += time.time() - custom_clock
-
-    def print_statistics(self):
-        for time_name in self.times:
-            time = self.times[time_name]
-            print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")

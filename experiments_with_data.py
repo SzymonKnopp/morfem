@@ -6,7 +6,6 @@ from scipy.sparse import csc_array
 from scipy.constants import pi, c as c_lightspeed
 from test_helpers import finite_element_method_model_order_reduction_gsm, finite_element_method_gsm
 
-
 TEST_REDUCED = True
 
 if __name__ == "__main__":
@@ -16,10 +15,10 @@ if __name__ == "__main__":
     in_c = csc_array(np.load("data/Ct.npy"))
     in_gamma = csc_array(np.load("data/Tt.npy"))
     in_b = csc_array(np.load("data/WP.npy"))
-    in_kte1 = np.load("data/kTE1.npy")
-    in_kte2 = np.load("data/kTE2.npy")
+    # in_kte1 = np.load("data/kTE1.npy")
+    # in_kte2 = np.load("data/kTE2.npy")
 
-    in_gamma *= ((2 * pi) / c_lightspeed) ** 2
+    in_gamma *= -((2 * pi) / c_lightspeed) ** 2
     in_b *= math.sqrt(1 / (8 * 1e-7 * pi ** 2))
 
     gsm_ref_in_frequency = finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b)

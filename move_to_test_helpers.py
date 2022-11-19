@@ -4,7 +4,7 @@ from scipy.constants import pi, c as c_lightspeed
 
 
 def system_matrix(frequency_point: float, in_c: csc_array, in_gamma: csc_array):
-    a_mat = in_c - frequency_point ** 2 * in_gamma
+    a_mat = in_c + frequency_point ** 2 * in_gamma
     return (a_mat + a_mat.T) / 2  # TODO: check if symmetrization needed after ROM | should A be a sparse matrix?
 
 
