@@ -2,7 +2,7 @@ import time
 import numpy as np
 from scipy.constants import pi, epsilon_0
 from scipy.sparse import csc_array
-from implementation import solve_finite_element_method, solve_finite_element_method_with_model_order_reduction
+from implementation import solve_finite_element_method, morfem
 
 
 def generalized_scattering_matrix(frequency_point: float, e: csc_array, b: csc_array):
@@ -38,7 +38,7 @@ def finite_element_method_model_order_reduction_gsm(frequency_points, gate_count
     gsm_in_frequency = np.zeros([frequency_points.size, gate_count, gate_count], dtype=complex)
 
     start = time.time()
-    x_in_domain, b_reduced_in_domain = solve_finite_element_method_with_model_order_reduction(frequency_points, in_c, in_gamma, in_b)
+    x_in_domain, b_reduced_in_domain = morfem(frequency_points, in_c, in_gamma, in_b)
     print("MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
