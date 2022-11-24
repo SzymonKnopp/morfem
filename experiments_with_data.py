@@ -9,6 +9,10 @@ from test_helpers import finite_element_method_model_order_reduction_gsm, finite
 TEST_REDUCED = True
 
 if __name__ == "__main__":
+    plt.rcParams["figure.figsize"] = (20., 10.)
+    plt.rcParams["font.size"] = 24
+    plt.rcParams["lines.linewidth"] = 4
+
     frequency_points = np.linspace(3e9, 5e9, 100)
     gate_count = 2
 
@@ -45,6 +49,7 @@ if __name__ == "__main__":
         plt.title("Dispersion characteristics on reduced model")
         plt.xlabel("Frequency [Hz]")
         plt.ylabel("|S11|, |S21| [dB]")
+        plt.savefig("output/result.png", bbox_inches="tight")
         plt.show()
 
         plt.semilogy(frequency_points, error_in_frequency)
@@ -54,6 +59,7 @@ if __name__ == "__main__":
         plt.title("Różnica między charakterystyką uzyskaną z\npełnowymiarowego i zredukowanego modelu")
         plt.xlabel("Częstotliwość [Hz]")
         plt.ylabel("Błąd [dB]")
+        plt.savefig("output/error.png", bbox_inches="tight")
         plt.show()
 
         print(error_in_frequency.mean())

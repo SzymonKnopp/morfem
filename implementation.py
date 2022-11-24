@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 ERROR_THRESHOLD = 1e-6
 USE_EQUALLY_DISTRIBUTED = False
-EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.95  # in range <0, 1)
+EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.97  # in range <0, 1)
 PLOT_GREEDY_ITERATIONS = False
 USE_OPM = False  # orthonormalize only new vectors in projection base, expand offline phase matrices
 
@@ -97,22 +97,11 @@ class TimeStatistics:
             print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")
 
 
-def solve_finite_element_method(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array):
+def morfem(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array, mode: str = "reduction"):
     md = ModelDefinition(domain, a0, csc_array(a0.shape), a2, b, lambda t: 1, lambda t: t, lambda t: t ** 2, lambda t: b_coefficient(t))
-    
-    x_in_domain = np.zeros((domain.size, b.shape[0], b.shape[1]))
-    for i in range(domain.size):
-        x_in_domain[i] = solve_fem_point(domain[i], md)
 
-    b_in_domain = np.zeros((domain.size, b.shape[0], b.shape[1]))
-    for i in range(domain.size):
-        b_in_domain[i] = impulse_vector(domain[i], md)
-
-    return x_in_domain, b_in_domain
-
-
-def morfem(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array):
-    md = ModelDefinition(domain, a0, csc_array(a0.shape), a2, b, lambda t: 1, lambda t: t, lambda t: t ** 2, lambda t: b_coefficient(t))
+    if mode == "no_reduction":
+        return solve_finite_element_method(md)
 
     start = time.time()
     q = projection_base(md) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(md)
@@ -126,7 +115,19 @@ def morfem(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array):
     md_r.a2 = q_t @ md.a2 @ q
     md_r.b = q_t @ md.b
 
-    return solve_finite_element_method(md_r.domain, md_r.a0, md_r.a2, md_r.b)
+    return solve_finite_element_method(md_r)
+
+
+def solve_finite_element_method(md: ModelDefinition):
+    x_in_domain = np.zeros((md.domain.size, md.b.shape[0], md.b.shape[1]))
+    for i in range(md.domain.size):
+        x_in_domain[i] = solve_fem_point(md.domain[i], md)
+
+    b_in_domain = np.zeros((md.domain.size, md.b.shape[0], md.b.shape[1]))
+    for i in range(md.domain.size):
+        b_in_domain[i] = impulse_vector(md.domain[i], md)
+
+    return x_in_domain, b_in_domain
 
 
 def projection_base_equally_distributed(md: ModelDefinition):
