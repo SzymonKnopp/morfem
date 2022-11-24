@@ -1,62 +1,147 @@
 import time
 import math
 import numpy as np
-from typing import List
+from typing import Callable
+from copy import deepcopy
 from numpy.linalg import norm
 from scipy.constants import pi, c as c_lightspeed
-from scipy.sparse import csc_array, isspmatrix_csc
+from scipy.sparse import csc_array, issparse
 from scipy.sparse.linalg import splu
 from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt
 
-ERROR_THRESHOLD = 1e-7
+ERROR_THRESHOLD = 1e-6
 USE_EQUALLY_DISTRIBUTED = False
-EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.95  # in range <0, 1)
+EQUALLY_DISTRIBUTED_REDUCTION_RATE = 0.97  # in range <0, 1)
 PLOT_GREEDY_ITERATIONS = False
 USE_OPM = False  # orthonormalize only new vectors in projection base, expand offline phase matrices
 
 
-def solve_finite_element_method(a_in_domain: List[csc_array] | np.ndarray, b_in_domain: np.ndarray):
-    x_in_domain = np.zeros(b_in_domain.shape)
-    for i in range(x_in_domain.shape[0]):
-        x = solve_linear(a_in_domain[i], b_in_domain[i])
-        x_in_domain[i] = x
+class ModelDefinition:
+    # array of t that the model is to be solved for
+    domain: np.ndarray = None
+    # addends of a system matrix
+    a0: csc_array = None
+    a1: csc_array = None
+    a2: csc_array = None
+    # impulse vector
+    b: csc_array = None
+    # t-coefficients of matrices
+    t_a0: Callable[[float], float]
+    t_a1: Callable[[float], float]
+    t_a2: Callable[[float], float]
+    t_b: Callable[[float], float]
 
-    return x_in_domain
+    def __init__(
+            self,
+            domain: np.ndarray,
+            a0: csc_array,
+            a1: csc_array,
+            a2: csc_array,
+            b: csc_array,
+            t_a0: Callable[[float], float],
+            t_a1: Callable[[float], float],
+            t_a2: Callable[[float], float],
+            t_b: Callable[[float], float]
+    ):
+        self.domain = domain
+        self.a0 = a0
+        self.a1 = a1
+        self.a2 = a2
+        self.b = b
+        self.t_a0 = t_a0
+        self.t_a1 = t_a1
+        self.t_a2 = t_a2
+        self.t_b = t_b
 
 
-def solve_finite_element_method_with_model_order_reduction(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+class OfflinePhaseMatrices:
+    qh_a0h_a0_q = None
+    qh_a0h_a1_q = None
+    qh_a0h_a2_q = None
+    qh_a0h_b = None
+    qh_a1h_a0_q = None
+    qh_a1h_a1_q = None
+    qh_a1h_a2_q = None
+    qh_a1h_b = None
+    qh_a2h_a0_q = None
+    qh_a2h_a1_q = None
+    qh_a2h_a2_q = None
+    qh_a2h_b = None
+    bh_a0_q = None
+    bh_a1_q = None
+    bh_a2_q = None
+    bh_b = None
+
+
+class TimeStatistics:
+    times = {"Whole": 0.0}
+    clock = 0.0
+
+    def start_clock(self):
+        self.clock = time.time()
+
+    def add_time(self, time_name: str):
+        if time_name not in self.times:
+            self.times[time_name] = 0.0
+
+        self.times[time_name] += time.time() - self.clock
+        self.clock = time.time()
+
+    def add_custom_time(self, time_name: str, custom_clock: float):
+        self.times[time_name] += time.time() - custom_clock
+
+    def print_statistics(self):
+        for time_name in self.times:
+            time = self.times[time_name]
+            print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")
+
+
+def morfem(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array, mode: str = "reduction"):
+    md = ModelDefinition(domain, a0, csc_array(a0.shape), a2, b, lambda t: 1, lambda t: t, lambda t: t ** 2, lambda t: b_coefficient(t))
+
+    if mode == "no_reduction":
+        return solve_finite_element_method(md)
+
     start = time.time()
-    q = projection_base(a_in_domain, b_in_domain, domain, in_c, in_gamma, in_b, kte1, kte2) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(a_in_domain, b_in_domain)
+    q = projection_base(md) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(md)
     print("Projection base: ", time.time() - start, " s")
 
     # reduce model order - 5.5
-    a_reduced_in_domain = np.zeros([b_in_domain.shape[0], q.shape[1], q.shape[1]])
-    b_reduced_in_domain = np.zeros([b_in_domain.shape[0], q.shape[1], b_in_domain.shape[2]])
+    md_r = deepcopy(md)
+    q_t = q.T
+    md_r.a0 = q_t @ md.a0 @ q
+    md_r.a1 = q_t @ md.a1 @ q
+    md_r.a2 = q_t @ md.a2 @ q
+    md_r.b = q_t @ md.b
 
-    for i in range(b_in_domain.shape[0]):
-        a_reduced_in_domain[i] = q.T @ a_in_domain[i] @ q  # TODO: calculate q_mat.T once and reuse?
-        b_reduced_in_domain[i] = q.T @ b_in_domain[i]
-
-    x_in_domain = solve_finite_element_method(a_reduced_in_domain, b_reduced_in_domain)
-
-    return x_in_domain, b_reduced_in_domain
+    return solve_finite_element_method(md_r)
 
 
-def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domain: np.ndarray):
+def solve_finite_element_method(md: ModelDefinition):
+    x_in_domain = np.zeros((md.domain.size, md.b.shape[0], md.b.shape[1]))
+    for i in range(md.domain.size):
+        x_in_domain[i] = solve_fem_point(md.domain[i], md)
+
+    b_in_domain = np.zeros((md.domain.size, md.b.shape[0], md.b.shape[1]))
+    for i in range(md.domain.size):
+        b_in_domain[i] = impulse_vector(md.domain[i], md)
+
+    return x_in_domain, b_in_domain
+
+
+def projection_base_equally_distributed(md: ModelDefinition):
     reduction_indices = np.linspace(  # indices of points to be added to projection base Q
         0,
-        b_in_domain.shape[0] - 1,
-        math.floor(b_in_domain.shape[0] * (1 - EQUALLY_DISTRIBUTED_REDUCTION_RATE)),
+        md.domain.size - 1,
+        math.floor(md.domain.size * (1 - EQUALLY_DISTRIBUTED_REDUCTION_RATE)),
         dtype=int
     )
-    vector_count = b_in_domain.shape[2]  # how many vectors does a single Ax = b solution contain
-    q = np.empty((b_in_domain.shape[1], vector_count * reduction_indices.size))
+    vector_count = md.b.shape[1]  # how many vectors does a single Ax = b solution contain
+    q = np.empty((md.b.shape[0], vector_count * reduction_indices.size))
 
     for i in range(reduction_indices.size):
-        a = a_in_domain[reduction_indices[i]]
-        b = b_in_domain[reduction_indices[i]]
-        q[:, vector_count*i:vector_count*i+vector_count] = solve_linear(a, b)
+        q[:, vector_count*i:vector_count*i+vector_count] = solve_fem_point(md.domain[reduction_indices[i]], md)
 
     q = np.linalg.svd(q, full_matrices=False)[0]  # orthonormalize Q
 
@@ -65,46 +150,60 @@ def projection_base_equally_distributed(a_in_domain: List[csc_array], b_in_domai
     return q
 
 
-def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domain: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, kte1, kte2):
+def projection_base(md: ModelDefinition):
     time_stats = TimeStatistics()
     time_stats.start_clock()
     whole_time_clock = time_stats.clock
 
     initial_vectors = np.hstack((  # starting points in projection base
-        solve_linear(a_in_domain[0], b_in_domain[0]),
-        solve_linear(a_in_domain[-1], b_in_domain[-1])
+        solve_fem_point(md.domain[0], md),
+        solve_fem_point(md.domain[-1], md),
     ))
-    # q = np.linalg.svd(initial_vectors, full_matrices=False)[0]  # orthonormalize
-    q = np.linalg.qr(initial_vectors)[0]
+    q = np.linalg.svd(initial_vectors, full_matrices=False)[0]  # orthonormalize
 
     opm = OfflinePhaseMatrices()
 
     if USE_OPM:
-        ch_c = h(in_c) @ in_c
-        ch_g = h(in_c) @ in_gamma
-        gh_c = h(in_gamma) @ in_c
-        gh_g = h(in_gamma) @ in_gamma
-        ch_b = h(in_c) @ in_b
-        gh_b = h(in_gamma) @ in_b
-        bh_c = h(in_b) @ in_c
-        bh_g = h(in_b) @ in_gamma
+        a0h_a0 = h(md.a0) @ md.a0
+        a0h_a1 = h(md.a0) @ md.a1
+        a0h_a2 = h(md.a0) @ md.a2
+        a0h_b = h(md.a0) @ md.b
+        a1h_a0 = h(md.a1) @ md.a0
+        a1h_a1 = h(md.a1) @ md.a1
+        a1h_a2 = h(md.a1) @ md.a2
+        a1h_b = h(md.a1) @ md.b
+        a2h_a0 = h(md.a2) @ md.a0
+        a2h_a1 = h(md.a2) @ md.a1
+        a2h_a2 = h(md.a2) @ md.a2
+        a2h_b = h(md.a2) @ md.b
+        bh_a0 = h(md.b) @ md.a0
+        bh_a1 = h(md.b) @ md.a1
+        bh_a2 = h(md.b) @ md.a2
+        bh_b = h(md.b) @ md.b
 
-        opm.qh_ch_c_q = h(q) @ ch_c @ q
-        opm.qh_ch_g_q = h(q) @ ch_g @ q
-        opm.qh_gh_c_q = h(q) @ gh_c @ q
-        opm.qh_gh_g_q = h(q) @ gh_g @ q
-        opm.qh_ch_b = h(q) @ ch_b
-        opm.qh_gh_b = h(q) @ gh_b
-        opm.bh_c_q = bh_c @ q
-        opm.bh_g_q = bh_g @ q
-        opm.bh_b = h(in_b) @ in_b
+        opm.qh_a0h_a0_q = h(q) @ a0h_a0 @ q
+        opm.qh_a0h_a1_q = h(q) @ a0h_a1 @ q
+        opm.qh_a0h_a2_q = h(q) @ a0h_a2 @ q
+        opm.qh_a0h_b = h(q) @ a0h_b
+        opm.qh_a1h_a0_q = h(q) @ a1h_a0 @ q
+        opm.qh_a1h_a1_q = h(q) @ a1h_a1 @ q
+        opm.qh_a1h_a2_q = h(q) @ a1h_a2 @ q
+        opm.qh_a1h_b = h(q) @ a1h_b
+        opm.qh_a2h_a0_q = h(q) @ a2h_a0 @ q
+        opm.qh_a2h_a1_q = h(q) @ a2h_a1 @ q
+        opm.qh_a2h_a2_q = h(q) @ a2h_a2 @ q
+        opm.qh_a2h_b = h(q) @ a2h_b
+        opm.bh_a0_q = bh_a0 @ q
+        opm.bh_a1_q = bh_a1 @ q
+        opm.bh_a2_q = bh_a2 @ q
+        opm.bh_b = bh_b
 
-    error_in_iteration = np.empty((0, b_in_domain.shape[0]))
+    error_in_iteration = np.empty((0, md.domain.size))
 
     time_stats.add_time("Before offline")
 
     while True:
-        q_new, error = new_solution_for_projection_base(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
+        q_new, error = new_solution_for_projection_base(md, q, opm, time_stats)
         error_in_iteration = np.vstack((error_in_iteration, error))
         if q_new is None:
             break
@@ -113,14 +212,21 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
             q_new = orthonormalize_to_base(q_new, q)
 
             # expand offline phase matrices
-            opm.qh_ch_c_q = expand_matrix(opm.qh_ch_c_q, q, ch_c, q_new)
-            opm.qh_ch_g_q = expand_matrix(opm.qh_ch_g_q, q, ch_g, q_new)
-            opm.qh_gh_c_q = expand_matrix(opm.qh_gh_c_q, q, gh_c, q_new)
-            opm.qh_gh_g_q = expand_matrix(opm.qh_gh_g_q, q, gh_g, q_new)
-            opm.qh_ch_b = np.vstack((opm.qh_ch_b, h(q_new) @ ch_b))
-            opm.qh_gh_b = np.vstack((opm.qh_gh_b, h(q_new) @ gh_b))
-            opm.bh_c_q = np.hstack((opm.bh_c_q, bh_c @ q_new))
-            opm.bh_g_q = np.hstack((opm.bh_g_q, bh_g @ q_new))
+            opm.qh_a0h_a0_q = expand_matrix(opm.qh_a0h_a0_q, q, a0h_a0, q_new)
+            opm.qh_a0h_a1_q = expand_matrix(opm.qh_a0h_a1_q, q, a0h_a1, q_new)
+            opm.qh_a0h_a2_q = expand_matrix(opm.qh_a0h_a2_q, q, a0h_a2, q_new)
+            opm.qh_a0h_b = np.vstack((opm.qh_a0h_b, h(q_new) @ a0h_b))
+            opm.qh_a1h_a0_q = expand_matrix(opm.qh_a1h_a0_q, q, a1h_a0, q_new)
+            opm.qh_a1h_a1_q = expand_matrix(opm.qh_a1h_a1_q, q, a1h_a1, q_new)
+            opm.qh_a1h_a2_q = expand_matrix(opm.qh_a1h_a2_q, q, a1h_a2, q_new)
+            opm.qh_a1h_b = np.vstack((opm.qh_a1h_b, h(q_new) @ a1h_b))
+            opm.qh_a2h_a0_q = expand_matrix(opm.qh_a2h_a0_q, q, a2h_a0, q_new)
+            opm.qh_a2h_a1_q = expand_matrix(opm.qh_a2h_a1_q, q, a2h_a1, q_new)
+            opm.qh_a2h_a2_q = expand_matrix(opm.qh_a2h_a2_q, q, a2h_a2, q_new)
+            opm.qh_a2h_b = np.vstack((opm.qh_a2h_b, h(q_new) @ a2h_b))
+            opm.bh_a0_q = np.hstack((opm.bh_a0_q , bh_a0 @ q_new))
+            opm.bh_a1_q = np.hstack((opm.bh_a1_q , bh_a1 @ q_new))
+            opm.bh_a2_q = np.hstack((opm.bh_a2_q , bh_a2 @ q_new))
 
             q = np.hstack((q, q_new))
         else:
@@ -137,94 +243,139 @@ def projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, domai
         plt.xlabel("Dziedzina")
         plt.ylabel("Błąd")
         for i in range(error_in_iteration.shape[0]):
-            plt.semilogy(domain, error_in_iteration[i], label=f"iter {i}")
+            plt.semilogy(md.domain, error_in_iteration[i], label=f"iter {i}")
         plt.legend()
         plt.show()
 
     return q
 
 
-def new_solution_for_projection_base(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
-    error = error_estimator(a_in_domain, b_in_domain, q, in_c, in_gamma, in_b, domain, kte1, kte2, opm, time_stats)
+def new_solution_for_projection_base(md: ModelDefinition, q: np.ndarray, opm, time_stats):
+    error = error_estimator(md, q, opm, time_stats)
     idx_max = error.argmax()
 
     if error[idx_max] < ERROR_THRESHOLD:
         return None, error
 
-    return solve_linear(a_in_domain[idx_max], b_in_domain[idx_max]), error
+    return solve_fem_point(md.domain[idx_max], md), error
 
 
-def residual_norm(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, domain: np.ndarray):
-    residual_norm_in_domain = np.empty(b_in_domain.shape[0])
-    for i in range(b_in_domain.shape[0]):
-        a_reduced = q.T @ a_in_domain[i] @ q  # TODO: calculate q.T once and reuse?
-        b_reduced = q.T @ b_in_domain[i]
-        residual = a_in_domain[i] @ q @ solve_linear(a_reduced, b_reduced) - b_in_domain[i]
+def residual_norm(md: ModelDefinition, q: np.ndarray):
+    residual_norm_in_domain = np.empty(md.domain.size)
+
+    q_t = q.T
+    md_r = deepcopy(md)
+    md_r.a0 = q_t @ md.a0 @ q
+    md_r.a1 = q_t @ md.a1 @ q
+    md_r.a2 = q_t @ md.a2 @ q
+    md_r.b = q_t @ md.b
+
+    for i in range(md.domain.size):
+        residual = system_matrix(md.domain[i], md) @ q @ solve_fem_point(md_r.domain[i], md_r) - impulse_vector(md.domain[i], md)
         residual_norm_in_domain[i] = norm(residual)
 
     return residual_norm_in_domain
 
 
-def error_estimator(a_in_domain: List[csc_array], b_in_domain: np.ndarray, q: np.ndarray, in_c: csc_array, in_gamma: csc_array, in_b: csc_array, domain: np.ndarray, kte1, kte2, opm, time_stats):
-    err_est_in_domain = np.empty(b_in_domain.shape[0])
+def error_estimator(md: ModelDefinition, q: np.ndarray, opm: OfflinePhaseMatrices, time_stats: TimeStatistics):
+    err_est_in_domain = np.empty(md.domain.size)
 
     if USE_OPM:
-        qh_ch_c_q = opm.qh_ch_c_q
-        qh_ch_g_q = opm.qh_ch_g_q
-        qh_ch_b = opm.qh_ch_b
-        qh_gh_c_q = opm.qh_gh_c_q
-        qh_gh_g_q = opm.qh_gh_g_q
-        qh_gh_b = opm.qh_gh_b
-        bh_c_q = opm.bh_c_q
-        bh_g_q = opm.bh_g_q
+        qh_a0h_a0_q = opm.qh_a0h_a0_q
+        qh_a0h_a1_q = opm.qh_a0h_a1_q
+        qh_a0h_a2_q = opm.qh_a0h_a2_q
+        qh_a0h_b = opm.qh_a0h_b
+        qh_a1h_a0_q = opm.qh_a1h_a0_q
+        qh_a1h_a1_q = opm.qh_a1h_a1_q
+        qh_a1h_a2_q = opm.qh_a1h_a2_q
+        qh_a1h_b = opm.qh_a1h_b
+        qh_a2h_a0_q = opm.qh_a2h_a0_q
+        qh_a2h_a1_q = opm.qh_a2h_a1_q
+        qh_a2h_a2_q = opm.qh_a2h_a2_q
+        qh_a2h_b = opm.qh_a2h_b
+        bh_a0_q = opm.bh_a0_q
+        bh_a1_q = opm.bh_a1_q
+        bh_a2_q = opm.bh_a2_q
         bh_b = opm.bh_b
     else:
         # offline phase - calculate factors not determined by domain TODO: calculate and reuse things like qh_ch
-        ch_c = h(in_c) @ in_c
-        ch_g = h(in_c) @ in_gamma
-        gh_c = h(in_gamma) @ in_c
-        gh_g = h(in_gamma) @ in_gamma
-        ch_b = h(in_c) @ in_b
-        gh_b = h(in_gamma) @ in_b
-        bh_c = h(in_b) @ in_c
-        bh_g = h(in_b) @ in_gamma
+        a0h_a0 = h(md.a0) @ md.a0
+        a0h_a1 = h(md.a0) @ md.a1
+        a0h_a2 = h(md.a0) @ md.a2
+        a0h_b = h(md.a0) @ md.b
+        a1h_a0 = h(md.a1) @ md.a0
+        a1h_a1 = h(md.a1) @ md.a1
+        a1h_a2 = h(md.a1) @ md.a2
+        a1h_b = h(md.a1) @ md.b
+        a2h_a0 = h(md.a2) @ md.a0
+        a2h_a1 = h(md.a2) @ md.a1
+        a2h_a2 = h(md.a2) @ md.a2
+        a2h_b = h(md.a2) @ md.b
+        bh_a0 = h(md.b) @ md.a0
+        bh_a1 = h(md.b) @ md.a1
+        bh_a2 = h(md.b) @ md.a2
+        bh_b = h(md.b) @ md.b
 
-        qh_ch_c_q = h(q) @ h(in_c) @ in_c @ q
-        qh_ch_g_q = h(q) @ h(in_c) @ in_gamma @ q
-        qh_ch_b = h(q) @ h(in_c) @ in_b
-        qh_gh_c_q = h(q) @ h(in_gamma) @ in_c @ q
-        qh_gh_g_q = h(q) @ h(in_gamma) @ in_gamma @ q
-        qh_gh_b = h(q) @ h(in_gamma) @ in_b
-        bh_c_q = h(in_b) @ in_c @ q
-        bh_g_q = h(in_b) @ in_gamma @ q
-        bh_b = h(in_b) @ in_b
+        qh_a0h_a0_q = h(q) @ a0h_a0 @ q
+        qh_a0h_a1_q = h(q) @ a0h_a1 @ q
+        qh_a0h_a2_q = h(q) @ a0h_a2 @ q
+        qh_a0h_b = h(q) @ a0h_b
+        qh_a1h_a0_q = h(q) @ a1h_a0 @ q
+        qh_a1h_a1_q = h(q) @ a1h_a1 @ q
+        qh_a1h_a2_q = h(q) @ a1h_a2 @ q
+        qh_a1h_b = h(q) @ a1h_b
+        qh_a2h_a0_q = h(q) @ a2h_a0 @ q
+        qh_a2h_a1_q = h(q) @ a2h_a1 @ q
+        qh_a2h_a2_q = h(q) @ a2h_a2 @ q
+        qh_a2h_b = h(q) @ a2h_b
+        bh_a0_q = bh_a0 @ q
+        bh_a1_q = bh_a1 @ q
+        bh_a2_q = bh_a2 @ q
+        bh_b = bh_b
 
-    in_c_reduced = q.T @ in_c @ q  # TODO: calculate q.T once and reuse?
-    in_gamma_reduced = q.T @ in_gamma @ q
-    in_b_reduced = q.T @ in_b
+    q_t = q.T
+    md_r = deepcopy(md)
+    md_r.a0 = q_t @ md.a0 @ q
+    md_r.a1 = q_t @ md.a1 @ q
+    md_r.a2 = q_t @ md.a2 @ q
+    md_r.b = q_t @ md.b
 
     time_stats.add_time("Offline")
 
     # online phase - sweep through domain
-    for i in range(domain.size):
-        a = system_matrix(domain[i], in_c_reduced, in_gamma_reduced)
-        b = impulse_vector(domain[i], in_b_reduced, kte1, kte2)
-        x = solve_linear(a, b)
+    for i in range(md_r.domain.size):
+        x = solve_fem_point(md_r.domain[i], md_r)
+        x_h = h(x)
+        t_a0 = md_r.t_a0(md_r.domain[i])
+        t_a1 = md_r.t_a1(md_r.domain[i])
+        t_a2 = md_r.t_a2(md_r.domain[i])
+        t_b = md_r.t_b(md_r.domain[i])
 
         time_stats.add_time("Online - solve")
 
         err_est_in_domain[i] = norm(
-            h(x) @ qh_ch_c_q @ x - k(domain[i]) ** 2 * h(x) @ qh_ch_g_q @ x -
-            factor_for_b(domain[i]) * h(x) @ qh_ch_b - k(domain[i]) ** 2 * h(x) @ qh_gh_c_q @ x +
-            k(domain[i]) ** 4 * h(x) @ qh_gh_g_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * h(x) @ qh_gh_b -
-            factor_for_b(domain[i]) * bh_c_q @ x + factor_for_b(domain[i]) * k(domain[i]) ** 2 * bh_g_q @ x +
-            factor_for_b(domain[i]) ** 2 * bh_b
+            t_a0 * t_a0 * x_h @ qh_a0h_a0_q @ x
+            + t_a0 * t_a1 * x_h @ qh_a0h_a1_q @ x
+            + t_a0 * t_a2 * x_h @ qh_a0h_a2_q @ x
+            - t_a0 * t_b * x_h @ qh_a0h_b
+            + t_a1 * t_a0 * x_h @ qh_a1h_a0_q @ x
+            + t_a1 * t_a1 * x_h @ qh_a1h_a1_q @ x
+            + t_a1 * t_a2 * x_h @ qh_a1h_a2_q @ x
+            - t_a1 * t_b * x_h @ qh_a1h_b
+            + t_a2 * t_a0 * x_h @ qh_a2h_a0_q @ x
+            + t_a2 * t_a1 * x_h @ qh_a2h_a1_q @ x
+            + t_a2 * t_a2 * x_h @ qh_a2h_a2_q @ x
+            - t_a2 * t_b * x_h @ qh_a2h_b
+            - t_b * t_a0 * bh_a0_q @ x
+            - t_b * t_a1 * bh_a1_q @ x
+            - t_b * t_a2 * bh_a2_q @ x
+            + t_b * t_b * bh_b
         )
 
         time_stats.add_time("Online - add")
 
     if PLOT_GREEDY_ITERATIONS:
-        plt.semilogy(domain, err_est_in_domain)
+        plt.semilogy(md_r.domain, err_est_in_domain)
         plt.title("Error estimator in domain")
         plt.xlabel("Domain")
         plt.ylabel("Error estimator")
@@ -246,28 +397,19 @@ def expand_matrix(original: np.ndarray, old_q: np.ndarray, middle: np.ndarray, n
     return np.vstack((top, bottom))
 
 
-def impulse_vector(frequency_point: float, in_b: csc_array, in_kte1: float, in_kte2: float):
-    zte1 = wave_impedance_te(in_kte1, frequency_point)
-    zte2 = wave_impedance_te(in_kte2, frequency_point)
+def solve_fem_point(t: float, md: ModelDefinition):
+    """solves (t0*A0 + t1*A1 + t2*A2)X = B for a specific point t in a domain"""
+    a = system_matrix(t, md)
+    b = impulse_vector(t, md)
 
-    di = np.diag(np.sqrt([1 / zte1, 1 / zte2]))  # TODO: współczynnikiem przy B będzie macierz zawierająca zte1 i zte2, uwzględnić w estymatorze błędu!
-    return in_b @ di
-
-
-def system_matrix(frequency_point: float, in_c: csc_array, in_gamma: csc_array):
-    k0 = (2 * pi * frequency_point) / c_lightspeed
-    a_mat = in_c - k0 ** 2 * in_gamma
-    return (a_mat + a_mat.T) / 2  # TODO: check if symmetrization needed after ROM | should A be a sparse matrix?
-
-
-def solve_linear(a: csc_array | np.ndarray, b: np.ndarray):
-    """solves Ax = b"""
-    if isspmatrix_csc(a):  # LU factorization - 3.27
-        e_mat = splu(a).solve(b)
+    # solve by LU factorization
+    if issparse(a):
+        x = splu(a).solve(b)
     else:
         lu = lu_factor(a)
-        e_mat = lu_solve(lu, b)
-    return e_mat
+        x = lu_solve(lu, b)
+
+    return x
 
 
 def h(array: np.ndarray | csc_array):
@@ -313,53 +455,16 @@ def orthonormalize_vector_to_base(vector: np.ndarray, base: np.ndarray) -> np.nd
     return result / norm(result)
 
 
-def k(frequency: float):
-    return (2 * pi * frequency) / c_lightspeed
+def system_matrix(t: float, md: ModelDefinition):
+    a = md.t_a0(t) * md.a0 + md.t_a1(t) * md.a1 + md.t_a2(t) * md.a2
+    return (a + a.T) / 2  # TODO: check if symmetrization needed after ROM | should A be a sparse matrix?
 
 
-def factor_for_b(frequency: float):
-    return math.sqrt(1 / wave_impedance_te(54.5976295582387, frequency))
+def impulse_vector(t: float, md: ModelDefinition):
+    b = md.t_b(t) * md.b
+    return b.todense() if issparse(b) else b # TODO: allow B returned here to be sparse?
 
 
-def wave_impedance_te(kcte, f0):
-    mi0 = 4 * pi * 1e-7
-    k0 = (2 * pi * f0) / c_lightspeed
-    gte = 1 / math.sqrt(k0 ** 2 - kcte ** 2)
-    if gte.imag != 0:  # kcte and f0 handled only as scalars, no vector values support
-        gte = 1j * math.fabs(gte)
-    return 2 * pi * f0 * mi0 * gte
-
-
-class OfflinePhaseMatrices:
-    qh_ch_c_q = None
-    qh_ch_g_q = None
-    qh_ch_b = None
-    qh_gh_c_q = None
-    qh_gh_g_q = None
-    qh_gh_b = None
-    bh_c_q = None
-    bh_g_q = None
-    bh_b = None
-
-
-class TimeStatistics:
-    times = {"Whole": 0.0}
-    clock = 0.0
-
-    def start_clock(self):
-        self.clock = time.time()
-
-    def add_time(self, time_name: str):
-        if time_name not in self.times:
-            self.times[time_name] = 0.0
-
-        self.times[time_name] += time.time() - self.clock
-        self.clock = time.time()
-
-    def add_custom_time(self, time_name: str, custom_clock: float):
-        self.times[time_name] += time.time() - custom_clock
-
-    def print_statistics(self):
-        for time_name in self.times:
-            time = self.times[time_name]
-            print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")
+def b_coefficient(t: float):
+    kte = 54.5976295582387
+    return math.sqrt(math.sqrt(((2 * pi * t) / c_lightspeed) ** 2 - kte ** 2) / t)
