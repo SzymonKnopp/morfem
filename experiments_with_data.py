@@ -43,25 +43,33 @@ if __name__ == "__main__":
         for i in range(frequency_points.size):
             error_in_frequency[i] = norm(gsm_in_frequency[i] - gsm_ref_in_frequency[i])
 
-        plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_in_frequency[:, 0, 0])))
-        plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_in_frequency[:, 1, 0])))
-        plt.legend(["S11", "S21"])
-        plt.title("Dispersion characteristics on reduced model")
-        plt.xlabel("Frequency [Hz]")
-        plt.ylabel("|S11|, |S21| [dB]")
+        plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_ref_in_frequency[:, 0, 0])), color="black", label=r"$S_{11}$")
+        plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_ref_in_frequency[:, 1, 0])), color="orange", label=r"$S_{21}$")
+        plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_in_frequency[:, 0, 0])), color="crimson", linestyle="dashed",
+                 dashes=(4, 4), label=r"$S_{11_{red}}$")
+        plt.plot(frequency_points, 20 * np.log10(np.abs(gsm_in_frequency[:, 1, 0])), color="crimson", linestyle="dotted",
+                 label=r"$S_{21_{red}}$")
+        plt.xlabel(r"$t$ [Hz]")
+        plt.ylabel(r"$S_{11}, S_{21}$ [dB]")
+        plt.legend()
+        plt.grid()
         plt.savefig("output/result.png", bbox_inches="tight")
         plt.show()
 
-        plt.semilogy(frequency_points, error_in_frequency)
-        # plt.title("Norm of difference between ref GSM and reduced model GSM")
-        # plt.xlabel("Frequency [Hz]")
-        # plt.ylabel("Error [dB]")
-        plt.title("Różnica między charakterystyką uzyskaną z\npełnowymiarowego i zredukowanego modelu")
-        plt.xlabel("Częstotliwość [Hz]")
-        plt.ylabel("Błąd [dB]")
+        plt.semilogy(frequency_points, error_in_frequency, color="orange")
+        plt.xlabel(r"$t$ [Hz]")
+        plt.ylabel(r"$\Delta S$ [dB]")
+        # plt.legend(loc="upper left")
+        plt.grid()
         plt.savefig("output/error.png", bbox_inches="tight")
         plt.show()
 
         print(error_in_frequency.mean())
+        print(error_in_frequency.max())
+
+        plt.spy(in_c, color="k")
+        plt.show()
+        plt.spy(in_gamma, color="k")
+        plt.show()
 
     print("Done")

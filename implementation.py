@@ -97,7 +97,7 @@ class TimeStatistics:
             print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")
 
 
-def morfem(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array, mode: str = "reduction"):
+def morfem(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array, mode: str = None):
     md = ModelDefinition(domain, a0, csc_array(a0.shape), a2, b, lambda t: 1, lambda t: t, lambda t: t ** 2, lambda t: b_coefficient(t))
 
     if mode == "no_reduction":
@@ -239,12 +239,16 @@ def projection_base(md: ModelDefinition):
     time_stats.print_statistics()
 
     if PLOT_GREEDY_ITERATIONS:
-        plt.title("Estymator błędu w iteracjach")
-        plt.xlabel("Dziedzina")
-        plt.ylabel("Błąd")
+        colors = ["orange", "crimson", "forestgreen", "royalblue", "black", "orchid"]
+        linestyle = ["solid", "dashed", "dashdot", "dotted"]
         for i in range(error_in_iteration.shape[0]):
-            plt.semilogy(md.domain, error_in_iteration[i], label=f"iter {i}")
+            plt.semilogy(md.domain, error_in_iteration[i], color=colors[i % len(colors)], linestyle=linestyle[i % len(linestyle)], label=fr"$j={i}$")
+        plt.xlabel(r"$t$ [Hz]")
+        plt.ylabel(r"$err_e$ [dB]")
+        # plt.legend(loc="upper left")
         plt.legend()
+        plt.grid()
+        plt.savefig("output/greedy_iterations.png", bbox_inches="tight")
         plt.show()
 
     return q
