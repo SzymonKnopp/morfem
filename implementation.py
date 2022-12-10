@@ -4,7 +4,6 @@ import numpy as np
 from typing import Callable
 from copy import deepcopy
 from numpy.linalg import norm
-from scipy.constants import pi, c as c_lightspeed
 from scipy.sparse import csc_array, issparse
 from scipy.sparse.linalg import splu
 from scipy.linalg import lu_factor, lu_solve
@@ -97,18 +96,25 @@ class TimeStatistics:
             print(f"{time_name}: {round(time, 2)} s | {round((time/self.times['Whole'])*100, 2)}%")
 
 
-def morfem(domain: np.ndarray, a0: csc_array, a2: csc_array, b: csc_array, mode: str = None):
-    md = ModelDefinition(domain, a0, csc_array(a0.shape), a2, b, lambda t: 1, lambda t: t, lambda t: t ** 2, lambda t: b_coefficient(t))
-
-    if mode == "no_reduction":
-        return solve_finite_element_method(md)
+def morfem(
+        domain: np.ndarray,
+        a0: csc_array,
+        a1: csc_array,
+        a2: csc_array,
+        b: csc_array,
+        t_a0: Callable[[float], float] = lambda t: 1.,
+        t_a1: Callable[[float], float] = lambda t: t,
+        t_a2: Callable[[float], float] = lambda t: t ** 2,
+        t_b: Callable[[float], float] = lambda t: t,
+                ):
+    md = ModelDefinition(domain, a0, a1, a2, b, t_a0, t_a1, t_a2, t_b)
 
     start = time.time()
     q = projection_base(md) if not USE_EQUALLY_DISTRIBUTED else projection_base_equally_distributed(md)
     print("Projection base: ", time.time() - start, " s")
 
     # reduce model order - 5.5
-    md_r = deepcopy(md)
+    md_r = md
     q_t = q.T
     md_r.a0 = q_t @ md.a0 @ q
     md_r.a1 = q_t @ md.a1 @ q
@@ -467,8 +473,3 @@ def system_matrix(t: float, md: ModelDefinition):
 def impulse_vector(t: float, md: ModelDefinition):
     b = md.t_b(t) * md.b
     return b.todense() if issparse(b) else b # TODO: allow B returned here to be sparse?
-
-
-def b_coefficient(t: float):
-    kte = 54.5976295582387
-    return math.sqrt(math.sqrt(((2 * pi * t) / c_lightspeed) ** 2 - kte ** 2) / t)
