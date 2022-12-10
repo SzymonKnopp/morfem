@@ -106,7 +106,24 @@ def morfem(
         t_a1: Callable[[float], float] = lambda t: t,
         t_a2: Callable[[float], float] = lambda t: t ** 2,
         t_b: Callable[[float], float] = lambda t: t,
-                ):
+                ) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+    """Quickly solves finite element method problem defined as ``(t_a0*a0 + t_a1*a1 + t_a2*a2)x = t_b*b``
+
+    Parameters
+    ----------
+    domain : array
+        Ordered set of points that the problem should be solved for.
+    a0, a1, a2, b : two-dimensional arrays
+        Matrices being part of definition of the problem.
+    t_a0, t_a1, t_a2, t_b : (`float`) -> `float`
+        Functions accepting domain point and returning specific coefficients used in the definition of the problem.
+
+    Returns
+    -------
+
+
+    """
+
     md = ModelDefinition(domain, a0, a1, a2, b, t_a0, t_a1, t_a2, t_b)
 
     start = time.time()
@@ -121,7 +138,7 @@ def morfem(
     md_r.a2 = q_t @ md.a2 @ q
     md_r.b = q_t @ md.b
 
-    return solve_finite_element_method(md_r)
+    return solve_finite_element_method(md_r), q, md_r.a0, md_r.a1, md_r.a2, md_r.b
 
 
 def solve_finite_element_method(md: ModelDefinition):
@@ -129,11 +146,7 @@ def solve_finite_element_method(md: ModelDefinition):
     for i in range(md.domain.size):
         x_in_domain[i] = solve_fem_point(md.domain[i], md)
 
-    b_in_domain = np.zeros((md.domain.size, md.b.shape[0], md.b.shape[1]))
-    for i in range(md.domain.size):
-        b_in_domain[i] = impulse_vector(md.domain[i], md)
-
-    return x_in_domain, b_in_domain
+    return x_in_domain
 
 
 def projection_base_equally_distributed(md: ModelDefinition):

@@ -37,11 +37,15 @@ def finite_element_method_gsm(frequency_points, gate_count, in_c, in_gamma, in_b
         lambda t: b_coefficient(t)
     )
     start = time.time()
-    x_in_domain, b_in_domain = solve_finite_element_method(md)
+    x_in_domain = solve_finite_element_method(md)
     print("No MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
-        gsm_in_frequency[i] = generalized_scattering_matrix(frequency_points[i], x_in_domain[i], b_in_domain[i])
+        gsm_in_frequency[i] = generalized_scattering_matrix(
+            frequency_points[i],
+            x_in_domain[i],
+            b_coefficient(frequency_points[i]) * in_b
+        )
 
     return gsm_in_frequency
 
@@ -50,11 +54,15 @@ def finite_element_method_model_order_reduction_gsm(frequency_points, gate_count
     gsm_in_frequency = np.zeros([frequency_points.size, gate_count, gate_count], dtype=complex)
 
     start = time.time()
-    x_in_domain, b_reduced_in_domain = morfem(frequency_points, in_c, csc_array(in_c.shape), in_gamma, in_b, t_b=lambda t: b_coefficient(t))
+    x_in_domain, _, _, _, _, b_reduced = morfem(frequency_points, in_c, csc_array(in_c.shape), in_gamma, in_b, t_b=lambda t: b_coefficient(t))
     print("MOR: ", time.time() - start, " s")
 
     for i in range(frequency_points.size):
-        gsm_in_frequency[i] = generalized_scattering_matrix(frequency_points[i], x_in_domain[i], b_reduced_in_domain[i])
+        gsm_in_frequency[i] = generalized_scattering_matrix(
+            frequency_points[i],
+            x_in_domain[i],
+            b_coefficient(frequency_points[i]) * b_reduced
+        )
 
     return gsm_in_frequency
 
