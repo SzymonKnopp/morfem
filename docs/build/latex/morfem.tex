@@ -54,15 +54,14 @@
 % Set up styles of URL: it should be placed after hyperref.
 \urlstyle{same}
 
-\addto\captionsenglish{\renewcommand{\contentsname}{Contents:}}
 
 \usepackage{sphinxmessages}
-\setcounter{tocdepth}{1}
+
 
 
 
 \title{morfem}
-\date{Dec 10, 2022}
+\date{Dec 14, 2022}
 \release{}
 \author{Szymon Knopp}
 \newcommand{\sphinxlogo}{\vbox{}}
@@ -80,25 +79,112 @@
 \pagestyle{plain}
 \sphinxtableofcontents
 \pagestyle{normal}
-\phantomsection\label{\detokenize{index::doc}}
+\phantomsection\label{\detokenize{index::doc}}\phantomsection\label{\detokenize{index:morfem}}
+\sphinxAtStartPar
+\sphinxstylestrong{morfem}(\sphinxstyleemphasis{domain}, \sphinxstyleemphasis{a0}, \sphinxstyleemphasis{a1}, \sphinxstyleemphasis{a2}, \sphinxstyleemphasis{b}, \sphinxstyleemphasis{t\_a0=lambda t: 1},
+\sphinxstyleemphasis{t\_a1=lambda t: t}, *t\_a2=lambda t: t**2\sphinxstyleemphasis{,}t\_b=lambda t: t*)
 
+\begin{DUlineblock}{0em}
+\item[] Solves finite element method problem defined as:
+\item[] (\sphinxcode{\sphinxupquote{t\_a0}} * \sphinxcode{\sphinxupquote{a0}} + \sphinxcode{\sphinxupquote{t\_a1}} * \sphinxcode{\sphinxupquote{a1}} + \sphinxcode{\sphinxupquote{t\_a2}} * \sphinxcode{\sphinxupquote{a2}}) \sphinxstyleemphasis{x} = \sphinxcode{\sphinxupquote{t\_b}} * \sphinxcode{\sphinxupquote{b}}
+\item[] using model order reduction algorithms.
+\end{DUlineblock}
+\begin{quote}\begin{description}
+\sphinxlineitem{Parameters}\begin{description}
+\sphinxlineitem{domain}{[}\sphinxstyleemphasis{vector, shape (I)}{]}
+\sphinxAtStartPar
+Ordered set of \sphinxstyleemphasis{I} domain points \sphinxcode{\sphinxupquote{t}}, that the problem should be solved for.
 
+\sphinxlineitem{a0}{[}\sphinxstyleemphasis{sparse csc array, shape (N, N)}{]}
+\sphinxAtStartPar
+First part of a system matrix.
 
-\chapter{Indices and tables}
-\label{\detokenize{index:indices-and-tables}}\begin{itemize}
+\sphinxlineitem{a1}{[}\sphinxstyleemphasis{sparse csc array, shape (N, N)}{]}
+\sphinxAtStartPar
+Second part of a system matrix.
+
+\sphinxlineitem{a2}{[}\sphinxstyleemphasis{sparse csc array, shape (N, N)}{]}
+\sphinxAtStartPar
+Third part of a system matrix.
+
+\sphinxlineitem{b}{[}\sphinxstyleemphasis{sparse csc array, shape (N, M)}{]}
+\sphinxAtStartPar
+Part of an impulse vector.
+
+\sphinxlineitem{t\_a0}{[}\sphinxstyleemphasis{(float) \sphinxhyphen{}\textgreater{} float}{]}
+\sphinxAtStartPar
+Function returning coefficient for \sphinxcode{\sphinxupquote{a0}}. \sphinxcode{\sphinxupquote{t}} \sphinxhyphen{}\textgreater{} \sphinxcode{\sphinxupquote{1}} by default.
+
+\sphinxlineitem{t\_a1}{[}\sphinxstyleemphasis{(float) \sphinxhyphen{}\textgreater{} float}{]}
+\sphinxAtStartPar
+Function returning coefficient for \sphinxcode{\sphinxupquote{a1}}. \sphinxcode{\sphinxupquote{t}} \sphinxhyphen{}\textgreater{} \sphinxcode{\sphinxupquote{t}} by default.
+
+\sphinxlineitem{t\_a2}{[}\sphinxstyleemphasis{(float) \sphinxhyphen{}\textgreater{} float}{]}
+\sphinxAtStartPar
+Function returning coefficient for \sphinxcode{\sphinxupquote{a2}}. \sphinxcode{\sphinxupquote{t}} \sphinxhyphen{}\textgreater{} \sphinxcode{\sphinxupquote{t**2}} by default.
+
+\sphinxlineitem{t\_b}{[}\sphinxstyleemphasis{(float) \sphinxhyphen{}\textgreater{} float}{]}
+\sphinxAtStartPar
+Function returning coefficient for \sphinxcode{\sphinxupquote{b}}. \sphinxcode{\sphinxupquote{t}} \sphinxhyphen{}\textgreater{} \sphinxcode{\sphinxupquote{t}} by default.
+
+\end{description}
+
+\sphinxlineitem{Returns}\begin{description}
+\sphinxlineitem{(x, q, a0\_r, a1\_r, a2\_r, b\_r)}{[}\sphinxstyleemphasis{tuple of ndarrays}{]}\begin{itemize}
 \item {} 
 \sphinxAtStartPar
-\DUrole{xref,std,std-ref}{genindex}
+\sphinxstylestrong{x} \sphinxhyphen{} \sphinxstyleemphasis{shape (I, Nr, M)}, array of problem solutions, where \sphinxcode{\sphinxupquote{x{[}n{]}}} is a solution for the \sphinxstyleemphasis{n}\sphinxhyphen{}th point in the \sphinxcode{\sphinxupquote{domain}}
 
 \item {} 
 \sphinxAtStartPar
-\DUrole{xref,std,std-ref}{modindex}
+\sphinxstylestrong{q} \sphinxhyphen{} \sphinxstyleemphasis{shape (N, Nr)} projection base, product of model order reduction algorithm
 
 \item {} 
 \sphinxAtStartPar
-\DUrole{xref,std,std-ref}{search}
+\sphinxstylestrong{a0\_r} \sphinxhyphen{} \sphinxstyleemphasis{shape (Nr, Nr)}, reduced \sphinxcode{\sphinxupquote{a0}}, equal to \sphinxcode{\sphinxupquote{q.T @ a0 @ q}}
+
+\item {} 
+\sphinxAtStartPar
+\sphinxstylestrong{a1\_r} \sphinxhyphen{} \sphinxstyleemphasis{shape (Nr, Nr)}, reduced \sphinxcode{\sphinxupquote{a1}}, equal to \sphinxcode{\sphinxupquote{q.T @ a1 @ q}}
+
+\item {} 
+\sphinxAtStartPar
+\sphinxstylestrong{a2\_r} \sphinxhyphen{} \sphinxstyleemphasis{shape (Nr, Nr)}, reduced \sphinxcode{\sphinxupquote{a2}}, equal to \sphinxcode{\sphinxupquote{q.T @ a2 @ q}}
+
+\item {} 
+\sphinxAtStartPar
+\sphinxstylestrong{b\_r} \sphinxhyphen{} \sphinxstyleemphasis{shape (Nr, M)}, reduced \sphinxcode{\sphinxupquote{b}}, equal to \sphinxcode{\sphinxupquote{q.T @ b}}
 
 \end{itemize}
+
+\end{description}
+
+\sphinxlineitem{Example}
+\sphinxAtStartPar
+Given the finite element method problem defined as \sphinxstyleemphasis{(G \sphinxhyphen{} t2 C)X = tB}, it can be solved by calling:
+
+\begin{sphinxVerbatim}[commandchars=\\\{\}]
+\PYG{n}{x}\PYG{p}{,} \PYG{n}{q}\PYG{p}{,} \PYG{n}{g\PYGZus{}r}\PYG{p}{,} \PYG{n}{\PYGZus{}}\PYG{p}{,} \PYG{n}{c\PYGZus{}r}\PYG{p}{,} \PYG{n}{b\PYGZus{}r} \PYG{o}{=} \PYG{n}{morfem}\PYG{p}{(}\PYG{n}{domain}\PYG{p}{,} \PYG{n}{G}\PYG{p}{,} \PYG{n}{csc\PYGZus{}array}\PYG{p}{(}\PYG{n}{G}\PYG{o}{.}\PYG{n}{shape}\PYG{p}{)}\PYG{p}{,} \PYG{n}{C}\PYG{p}{,} \PYG{n}{B}\PYG{p}{,} \PYG{n}{t\PYGZus{}a2}\PYG{o}{=}\PYG{k}{lambda} \PYG{n}{t}\PYG{p}{:} \PYG{o}{\PYGZhy{}}\PYG{n}{t}\PYG{o}{*}\PYG{o}{*}\PYG{l+m+mi}{2}\PYG{p}{)}
+\end{sphinxVerbatim}
+
+\sphinxAtStartPar
+Equivalent calls include, (among others):
+
+\begin{sphinxVerbatim}[commandchars=\\\{\}]
+\PYG{n}{morfem}\PYG{p}{(}\PYG{n}{domain}\PYG{p}{,} \PYG{n}{G}\PYG{p}{,} \PYG{n}{C}\PYG{p}{,} \PYG{n}{csc\PYGZus{}array}\PYG{p}{(}\PYG{n}{G}\PYG{o}{.}\PYG{n}{shape}\PYG{p}{)}\PYG{p}{,} \PYG{n}{B}\PYG{p}{,} \PYG{n}{t\PYGZus{}a1}\PYG{o}{=}\PYG{k}{lambda} \PYG{n}{t}\PYG{p}{:} \PYG{o}{\PYGZhy{}}\PYG{n}{t}\PYG{o}{*}\PYG{o}{*}\PYG{l+m+mi}{2}\PYG{p}{)}
+\PYG{n}{morfem}\PYG{p}{(}\PYG{n}{domain}\PYG{p}{,} \PYG{n}{G}\PYG{p}{,} \PYG{n}{C}\PYG{p}{,} \PYG{n}{csc\PYGZus{}array}\PYG{p}{(}\PYG{n}{G}\PYG{o}{.}\PYG{n}{shape}\PYG{p}{)}\PYG{p}{,} \PYG{n}{B}\PYG{p}{,} \PYG{n}{t\PYGZus{}a0}\PYG{o}{=}\PYG{k}{lambda} \PYG{n}{t}\PYG{p}{:} \PYG{l+m+mi}{1}\PYG{p}{,} \PYG{n}{t\PYGZus{}a1}\PYG{o}{=}\PYG{k}{lambda} \PYG{n}{t}\PYG{p}{:} \PYG{o}{\PYGZhy{}}\PYG{n}{t}\PYG{o}{*}\PYG{o}{*}\PYG{l+m+mi}{2}\PYG{p}{,} \PYG{n}{t\PYGZus{}b}\PYG{o}{=}\PYG{k}{lambda} \PYG{n}{t}\PYG{p}{:} \PYG{n}{t}\PYG{p}{)}
+\end{sphinxVerbatim}
+
+\sphinxAtStartPar
+If, for example \sphinxstyleemphasis{E} is needed for all the points in domain, where \sphinxstyleemphasis{E\_t = t(X\_transposed)B}, it can be calculated as:
+
+\begin{sphinxVerbatim}[commandchars=\\\{\}]
+\PYG{n}{e} \PYG{o}{=} \PYG{n}{np}\PYG{o}{.}\PYG{n}{zeros}\PYG{p}{(}\PYG{p}{(}\PYG{n}{domain}\PYG{o}{.}\PYG{n}{size}\PYG{p}{,} \PYG{n}{x}\PYG{o}{.}\PYG{n}{shape}\PYG{p}{[}\PYG{l+m+mi}{1}\PYG{p}{]}\PYG{p}{,} \PYG{n}{b\PYGZus{}r}\PYG{o}{.}\PYG{n}{shape}\PYG{p}{[}\PYG{l+m+mi}{1}\PYG{p}{]}\PYG{p}{)}\PYG{p}{)}
+\PYG{k}{for} \PYG{n}{i} \PYG{o+ow}{in} \PYG{n+nb}{range}\PYG{p}{(}\PYG{n}{domain}\PYG{o}{.}\PYG{n}{size}\PYG{p}{)}\PYG{p}{:}
+    \PYG{n}{e}\PYG{p}{[}\PYG{n}{i}\PYG{p}{]} \PYG{o}{=} \PYG{n}{domain}\PYG{p}{[}\PYG{n}{i}\PYG{p}{]} \PYG{o}{*} \PYG{n}{x}\PYG{p}{[}\PYG{n}{i}\PYG{p}{]}\PYG{o}{.}\PYG{n}{T} \PYG{o}{*} \PYG{n}{b\PYGZus{}r}
+\end{sphinxVerbatim}
+
+\end{description}\end{quote}
 
 
 

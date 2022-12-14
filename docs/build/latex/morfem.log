@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.24 (MiKTeX 22.11.25) (preloaded format=pdflatex 2022.12.10)  10 DEC 2022 17:50
+This is pdfTeX, Version 3.141592653-2.6-1.40.24 (MiKTeX 22.11.25) (preloaded format=pdflatex 2022.12.10)  14 DEC 2022 16:56
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -678,7 +678,7 @@ Package: sphinxmessages 2019/01/04 v2.0 Localized LaTeX macros (Sphinx team)
 
 
 Writing index file morfem.idx
-LaTeX Font Info:    Trying to load font information for T1+qtm on input line 71
+LaTeX Font Info:    Trying to load font information for T1+qtm on input line 70
 .
 (C:\Programy\MiKTeX\tex/latex/tex-gyre\t1qtm.fd
 File: t1qtm.fd 2009/09/25 v1.2 font definition file for T1/qtm
@@ -690,24 +690,24 @@ File: l3backend-pdftex.def 2022-10-26 L3 backend support: PDF output (pdfTeX)
 ) (morfem.aux)
 \openout1 = `morfem.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 71.
-LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 70.
+LaTeX Font Info:    ... okay on input line 70.
 
 (C:\Programy\MiKTeX\tex/context/base/mkii\supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
@@ -766,24 +766,24 @@ File: epstopdf-sys.cfg 2021/03/18 v2.0 Configuration of epstopdf for MiKTeX
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-Package hyperref Info: Link coloring ON on input line 71.
+Package hyperref Info: Link coloring ON on input line 70.
 (morfem.out) (morfem.out)
 \@outlinefile=\write5
 \openout5 = `morfem.out'.
 
-Package hyperref Info: Option `pageanchor' set `false' on input line 79.
-LaTeX Font Info:    Trying to load font information for T1+qhv on input line 79
+Package hyperref Info: Option `pageanchor' set `false' on input line 78.
+LaTeX Font Info:    Trying to load font information for T1+qhv on input line 78
 .
  (C:\Programy\MiKTeX\tex/latex/tex-gyre\t1qhv.fd
 File: t1qhv.fd 2009/09/25 v1.2 font definition file for T1/qhv
 )<<ot1.cmap>><<oml.cmap>><<oms.cmap>><<omx.cmap>>
-LaTeX Font Info:    Trying to load font information for U+msa on input line 79.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 78.
 
 
 (C:\Programy\MiKTeX\tex/latex/amsfonts\umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 79.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 78.
 
 
 (C:\Programy\MiKTeX\tex/latex/amsfonts\umsb.fd
@@ -802,32 +802,44 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ] [2
 
 ]
-Chapter 1.
-LaTeX Font Info:    Trying to load font information for TS1+qtm on input line 8
+LaTeX Font Info:    Trying to load font information for T1+txtt on input line 8
 9.
+
+(C:\Programy\MiKTeX\tex/latex/txfonts\t1txtt.fd
+File: t1txtt.fd 2000/12/15 v3.1
+)
+LaTeX Font Info:    Trying to load font information for TS1+qtm on input line 1
+34.
+
 (C:\Programy\MiKTeX\tex/latex/tex-gyre\ts1qtm.fd
 File: ts1qtm.fd 2009/09/25 v1.2 font definition file for TS1/qtm
-) (morfem.ind) [1
-
-] (morfem.aux)
+)
+LaTeX Font Info:    Font shape `T1/txtt/b/n' in size <10> not available
+(Font)              Font shape `T1/txtt/bx/n' tried instead on input line 167.
+ [1] (morfem.ind) [2]
+(morfem.aux)
 Package rerunfilecheck Info: File `morfem.out' has not changed.
-(rerunfilecheck)             Checksum: E81C69F63AD497B126C77C1297BE8A5D;139.
+(rerunfilecheck)             Checksum: D41D8CD98F00B204E9800998ECF8427E;0.
  ) 
 Here is how much of TeX's memory you used:
- 15238 strings out of 475281
- 250909 string characters out of 2786258
- 605779 words of memory out of 3000000
- 36365 multiletter control sequences out of 15000+600000
- 509217 words of font info for 56 fonts, out of 8000000 for 9000
+ 15302 strings out of 475281
+ 251839 string characters out of 2786258
+ 622732 words of memory out of 3000000
+ 36409 multiletter control sequences out of 15000+600000
+ 513656 words of font info for 63 fonts, out of 8000000 for 9000
  1142 hyphenation exceptions out of 8191
- 70i,11n,76p,250b,512s stack positions out of 10000i,1000n,20000p,200000b,80000s
-{C:/Programy/MiKTeX/fonts/enc/dvips/tex-gyre/q-ec.enc}{C:/Programy/MiKTeX/fon
-ts/enc/dvips/tex-gyre/q-ts1.enc}<C:/Programy/MiKTeX/fonts/type1/public/tex-gyre
-/qhvb.pfb><C:/Programy/MiKTeX/fonts/type1/public/tex-gyre/qtmb.pfb><C:/Programy
-/MiKTeX/fonts/type1/public/tex-gyre/qtmr.pfb>
-Output written on morfem.pdf (5 pages, 79236 bytes).
+ 70i,11n,76p,571b,725s stack positions out of 10000i,1000n,20000p,200000b,80000s
+{C:/Programy/MiKTeX/fonts/enc/dvips/tex-gyre/q-ts1.enc}{C:/Programy/MiKTeX/fo
+nts/enc/dvips/tex-gyre/q-ec.enc}<C:/Programy/MiKTeX/fonts/type1/public/amsfonts
+/cm/cmmi5.pfb><C:/Programy/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy5.pfb><C:/
+Programy/MiKTeX/fonts/type1/public/tex-gyre/qhvb.pfb><C:/Programy/MiKTeX/fonts/
+type1/public/tex-gyre/qtmb.pfb><C:/Programy/MiKTeX/fonts/type1/public/tex-gyre/
+qtmr.pfb><C:/Programy/MiKTeX/fonts/type1/public/tex-gyre/qtmri.pfb><C:/Programy
+/MiKTeX/fonts/type1/public/txfonts/t1xbtt.pfb><C:/Programy/MiKTeX/fonts/type1/p
+ublic/txfonts/t1xtt.pfb>
+Output written on morfem.pdf (6 pages, 137866 bytes).
 PDF statistics:
- 57 PDF objects out of 1000 (max. 8388607)
- 7 named destinations out of 1000 (max. 500000)
- 29 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 76 PDF objects out of 1000 (max. 8388607)
+ 8 named destinations out of 1000 (max. 500000)
+ 21 words of extra memory for PDF output out of 10000 (max. 10000000)
 
